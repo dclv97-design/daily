@@ -31,6 +31,15 @@
   };
 
   /* Launcher */
+  function greeting() {
+    const hr = new Date().getHours();
+    if (hr < 5) return "늦은 밤이에요,\n오늘도 수고했어요";
+    if (hr < 11) return "좋은 아침이에요";
+    if (hr < 14) return "점심은 챙겨 드셨나요";
+    if (hr < 18) return "오후도 야무지게";
+    return "오늘 하루도 수고했어요";
+  }
+
   async function launcher() {
     root.innerHTML = "";
     const stockBadge = h("span.app-badge", { style: { display: "none" } });
@@ -48,12 +57,12 @@
     if (window.Note) Note.homeTodoCard().then((c) => c && todoSlot.appendChild(c)).catch(() => {});
     const el = h(
       "div.launch",
-      h("h1", U.dateLabel(U.today())),
-      h("div.app-grid",
+      h("div.launch-head", h("div.date", U.dateLabel(U.today())), h("h1", greeting())),
+      h("div.app-grid-card", h("div.app-grid",
         appIcon("stock", "chart", "부자되기", "#/stocks", stockBadge),
         appIcon("news", "globe", "똑똑해지기", "#/news", newsBadge),
         appIcon("note", "note", "똑부러지기", "#/note", noteBadge),
-        appIcon("trip", "plane", "야무져지기", "#/trip", tripBadge)),
+        appIcon("trip", "plane", "야무져지기", "#/trip", tripBadge))),
       h("div.home-cards", newsSlot, todoSlot),
       q ? h("p.daily-quote", h("span", `“${q.t}”`), h("span.by", `- ${q.by}`)) : null,
       h("div.foot", h("span", "모든 노트는 이 기기에만 저장됩니다"), h("button.link-btn", { onclick: () => (location.hash = "#/settings") }, "설정")),
