@@ -85,3 +85,38 @@ Return only this JSON inside <json></json> tags:
   console.log("claude: too many continuations");
   return null;
 }
+
+// Summarize the day's headlines (no web search; the headlines are the only source).
+export async function summarizeNews({ today, sections }) {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.log("claude news: skipped (ANTHROPIC_API_KEY not set)");
+    return null;
+  }
+  const client = new Anthropic();
+  const list = sections.map((s) => `## ${s.id} (${s.label})\n${s.items.map((x, i) => `${i + 1}. ${x.t} - ${x.src}`).join("\n") || "(none)"}`).join("\n\n");
+  const prompt = `Today is ${today} (KST). Below are today's and yesterday's Korean news headlines, grouped by section.
+Summarize each section in Korean using only these headlines. Do not add facts that the headlines do not state.
+Merge headlines about the same story. Write 2 to 4 bullets per section, each under 70 Korean characters, plain and neutral.
+For an empty section return an empty list. Also write one headline line (under 45 characters) for the most important story of the day.
+
+${list}
+
+Return only this JSON inside <json></json> tags:
+<json>{"headline": "", "top": [""], "world": [""], "biz": [""], "spa": [""], "fashion": [""], "hr": [""]}</json>`;
+  try {
+    const res = await client.beta.messages.create({
+      model: MODEL,
+      max_tokens: 4000,
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      output_config: { effort: "low" },
+      system: "You summarize news headlines for one reader. Korean output. Facts only, no opinions or predictions.",
+      messages: [{ role: "user", content: prompt }],
+    });
+    const text = res.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+    return extractJson(text);
+  } catch (e) {
+    console.log(`claude news: ${e.message}`);
+    return null;
+  }
+}
