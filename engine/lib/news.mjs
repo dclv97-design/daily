@@ -1,25 +1,29 @@
-// Daily news digest from Google News RSS (Korean edition). Writes plain JSON for the
-// 똑똑해지기 app: headlines grouped by section, plus an optional Claude summary.
+// Daily news digest for the 똑똑해지기 app, in three groups:
+//   life  - 한국 2030이 알아야 할 것 (연합뉴스 종합·경제·사회)
+//   world - 국제 정세 (연합뉴스 국제)
+//   store - SPAO 매장 HR이 알아야 할 것 (Bing 뉴스 검색: SPA·패션 리테일, 최저임금·근로기준·채용)
+// Claude (Haiku) picks the stories, reads the article text and writes short summaries.
+// Without an API key the app shows the newest articles with their lead text.
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { summarizeNews } from "./claude.mjs";
+import { pickNewsStories, writeNewsStories } from "./claude.mjs";
 import { sendPush } from "./push.mjs";
 
 const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
-const KO = "hl=ko&gl=KR&ceid=KR:ko";
-const topic = (t) => `https://news.google.com/rss/headlines/section/topic/${t}?${KO}`;
-const search = (q) => `https://news.google.com/rss/search?q=${encodeURIComponent(`${q} when:2d`)}&${KO}`;
+const yna = (f) => `https://www.yna.co.kr/rss/${f}.xml`;
+const bing = (q) => `https://www.bing.com/news/search?q=${encodeURIComponent(q)}&format=rss&setlang=ko&cc=kr`;
 
-export const SECTIONS = [
-  { id: "top", label: "주요", url: `https://news.google.com/rss?${KO}`, n: 8 },
-  { id: "world", label: "세계", url: topic("WORLD"), n: 6 },
-  { id: "biz", label: "경제", url: topic("BUSINESS"), n: 6 },
-  { id: "spa", label: "SPA", url: search('(유니클로 OR ZARA OR 자라리테일 OR 탑텐 OR 스파오 OR 무신사스탠다드 OR "SPA 브랜드" OR 에잇세컨즈 OR 쉬인 OR H&M)'), n: 10 },
-  { id: "fashion", label: "패션", url: search("(패션업계 OR 패션기업 OR 의류업계 OR 한섬 OR 신세계인터내셔날 OR 삼성물산패션 OR LF패션 OR 무신사 OR 에이블리 OR W컨셉 OR 29CM)"), n: 10 },
-  { id: "hr", label: "HR", url: search("(인사제도 OR 채용시장 OR 희망퇴직 OR 구조조정 OR 임원인사 OR 노동시장 OR 주4일제 OR 성과급 OR HR테크 OR 인사담당자 OR 인사노무)"), n: 10 },
+export const GROUPS = [
+  { id: "life", label: "2030", title: "2030이 알아야 할 것", feeds: [yna("news"), yna("economy"), yna("society")], hours: [36, 72], cap: 80, show: 12 },
+  { id: "world", label: "국제", title: "국제 정세", feeds: [yna("international")], hours: [36, 72], cap: 50, show: 12 },
+  {
+    id: "store", label: "매장 HR", title: "SPAO 매장 HR 체크",
+    feeds: ["스파오", "이랜드월드", "SPA 브랜드", "유니클로", "탑텐", "무신사 스탠다드", "패션 매장", "최저임금", "근로기준법", "주휴수당", "아르바이트 채용", "고용노동부 근로감독", "유통업계 인력"].map(bing),
+    hours: [72, 24 * 7], cap: 50, show: 15,
+  },
 ];
 
-const ENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+const ENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", middot: "·", hellip: "…" };
 function decode(s) {
   return String(s || "")
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
@@ -28,15 +32,28 @@ function decode(s) {
     .replace(/&([a-z]+);/gi, (m, n) => ENT[n.toLowerCase()] ?? m)
     .trim();
 }
-const tag = (xml, t) => (xml.match(new RegExp(`<${t}[^>]*>([\\s\\S]*?)</${t}>`)) || [])[1];
+const strip = (s) => decode(s).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+const tag = (xml, t) => (xml.match(new RegExp(`<${t}[^>]*>([\\s\\S]*?)</${t}>`, "i")) || [])[1];
+
+// Bing wraps the article URL in a click-tracking link; keep the real one.
+function realLink(link) {
+  try {
+    const u = new URL(link);
+    if (u.hostname.endsWith("bing.com") && u.searchParams.get("url")) return u.searchParams.get("url");
+  } catch { /* keep */ }
+  return link;
+}
 
 export function parseRss(xml) {
   return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map(([, it]) => {
-    const src = decode(tag(it, "source"));
-    let title = decode(tag(it, "title"));
-    if (src && title.endsWith(` - ${src}`)) title = title.slice(0, -(src.length + 3));
-    return { t: title, src, link: decode(tag(it, "link")), pub: new Date(decode(tag(it, "pubDate"))).toISOString() };
-  }).filter((x) => x.t && x.link && x.pub !== "Invalid Date");
+    const src = strip(tag(it, "News:Source") || tag(it, "source") || "").replace(/ on MSN$/, "") || (/yna\.co\.kr/.test(it) ? "연합뉴스" : "");
+    let t = strip(tag(it, "title"));
+    if (src && t.endsWith(` - ${src}`)) t = t.slice(0, -(src.length + 3));
+    t = t.replace(/^\[(속보|단독|종합)\]\s*/, "");
+    const desc = strip(tag(it, "description")).replace(/^\([^)=]{1,30}=[^)]{1,15}\)\s*[^=]{1,30}=\s*/, "");
+    const pub = new Date(decode(tag(it, "pubDate")));
+    return { t, src, link: realLink(decode(tag(it, "link"))), pub: isNaN(pub) ? null : pub.toISOString(), desc: desc.slice(0, 320) };
+  }).filter((x) => x.t && x.link && x.pub);
 }
 
 // near-duplicate check on character bigrams (same story from several outlets)
@@ -50,7 +67,7 @@ function similar(a, b) {
 async function fetchText(url) {
   for (let i = 0; i < 3; i++) {
     try {
-      const r = await fetch(url, { headers: { "User-Agent": UA } });
+      const r = await fetch(url, { headers: { "User-Agent": UA, "Accept-Language": "ko-KR,ko;q=0.9" } });
       if (r.ok) return await r.text();
     } catch { /* retry */ }
     await new Promise((res) => setTimeout(res, 800 * (i + 1)));
@@ -58,31 +75,80 @@ async function fetchText(url) {
   return null;
 }
 
+// Article text: paragraphs of the page (works for 연합뉴스; other sites fall back to the RSS lead).
+async function articleText(link) {
+  if (!/yna\.co\.kr\/view\//.test(link)) return null;
+  const html = await fetchText(link);
+  if (!html) return null;
+  const ps = [...html.matchAll(/<p(?:\s[^>]*)?>([\s\S]*?)<\/p>/g)].map(([, p]) => strip(p))
+    .filter((p) => p.length > 30 && !/재판매 및 DB 금지|제보는 카카오톡|@yna\.co\.kr|저작권자/.test(p));
+  return ps.join(" ").replace(/^\([^)]{1,30}=연합뉴스\)\s*[^=]{1,30}=\s*/, "").slice(0, 1100) || null;
+}
+
+async function collect(g, now) {
+  const all = [];
+  for (const url of g.feeds) {
+    const xml = await fetchText(url);
+    if (!xml) { console.log(`news: ${g.id} feed failed ${url.slice(0, 60)}`); continue; }
+    all.push(...parseRss(xml));
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  all.sort((a, b) => b.pub.localeCompare(a.pub));
+  let pool = all.filter((x) => now - Date.parse(x.pub) <= g.hours[0] * 3600e3);
+  if (pool.length < 8) pool = all.filter((x) => now - Date.parse(x.pub) <= g.hours[1] * 3600e3);
+  const seen = [];
+  const items = [];
+  for (const x of pool) {
+    const gx = grams(x.t);
+    if (seen.some((o) => similar(gx, o) >= 0.6)) continue;
+    seen.push(gx);
+    items.push(x);
+    if (items.length >= g.cap) break;
+  }
+  return items;
+}
+
 export async function runNews({ dataDir, today }) {
   const now = Date.now();
-  const seen = [];
-  const sections = [];
-  for (const s of SECTIONS) {
-    const xml = await fetchText(s.url);
-    if (!xml) { console.log(`news: ${s.id} fetch failed`); sections.push({ id: s.id, label: s.label, items: [] }); continue; }
-    const all = parseRss(xml).sort((a, b) => b.pub.localeCompare(a.pub));
-    // 당일·전일 기사 우선, 너무 적으면 사흘까지
-    let pool = all.filter((x) => now - Date.parse(x.pub) <= 36 * 3600e3);
-    if (pool.length < 3) pool = all.filter((x) => now - Date.parse(x.pub) <= 72 * 3600e3);
-    const items = [];
-    for (const x of pool) {
-      const g = grams(x.t);
-      if (seen.some((o) => similar(g, o) >= 0.6)) continue;
-      seen.push(g);
-      items.push(x);
-      if (items.length >= s.n) break;
+  const pools = {};
+  for (const g of GROUPS) pools[g.id] = await collect(g, now);
+
+  // 1) Claude picks the stories (ids like life:3), 2) reads their text and summarizes.
+  let summary = null;
+  const picks = await pickNewsStories({ today, groups: GROUPS.map((g) => ({ id: g.id, title: g.title, items: pools[g.id] })) });
+  if (picks) {
+    const stories = {};
+    for (const g of GROUPS) {
+      stories[g.id] = [];
+      for (const ids of (picks[g.id] || []).slice(0, 5)) {
+        const refs = [...new Set(ids)].map((i) => Number(i)).filter((i) => pools[g.id][i]).slice(0, 3);
+        if (!refs.length) continue;
+        const arts = [];
+        for (const i of refs.slice(0, 2)) {
+          const x = pools[g.id][i];
+          arts.push({ t: x.t, src: x.src, text: (await articleText(x.link)) || x.desc });
+        }
+        stories[g.id].push({ refs, arts });
+      }
     }
-    sections.push({ id: s.id, label: s.label, items });
+    summary = await writeNewsStories({ today, groups: GROUPS.map((g) => ({ id: g.id, title: g.title, stories: stories[g.id] })) });
+    if (summary) {
+      for (const g of GROUPS) {
+        summary[g.id] = (summary[g.id] || []).map((s, k) => ({ ...s, refs: stories[g.id][k]?.refs || [] })).filter((s) => s.title);
+      }
+    }
   }
 
-  const summary = await summarizeNews({ today, sections });
-  const digest = { v: 1, date: today, generatedAt: new Date().toISOString(), sections, summary: summary || null };
+  // Articles shown under each group: the ones used by the summary first, then the newest.
+  const groups = GROUPS.map((g) => {
+    const used = (summary?.[g.id] || []).flatMap((s) => s.refs);
+    const order = [...new Set([...used, ...pools[g.id].map((_, i) => i)])].slice(0, Math.max(g.show, used.length));
+    const idx = new Map(order.map((i, k) => [i, k]));
+    if (summary?.[g.id]) summary[g.id].forEach((s) => { s.refs = s.refs.map((i) => idx.get(i)).filter((k) => k != null); });
+    return { id: g.id, label: g.label, title: g.title, items: order.map((i) => pools[g.id][i]) };
+  });
 
+  const digest = { v: 2, date: today, generatedAt: new Date().toISOString(), groups, summary };
   const dir = path.join(dataDir, "news");
   mkdirSync(dir, { recursive: true });
   writeFileSync(path.join(dir, "latest.json"), JSON.stringify(digest));
@@ -92,14 +158,13 @@ export async function runNews({ dataDir, today }) {
   idx.dates = [...new Set([today, ...idx.dates])].sort().reverse().slice(0, 60);
   idx.updatedAt = digest.generatedAt;
   writeFileSync(idxPath, JSON.stringify(idx, null, 1));
-  console.log(`news: ${sections.map((s) => `${s.id} ${s.items.length}`).join(", ")}${summary ? ", summarized" : ""}`);
+  console.log(`news: ${GROUPS.map((g) => `${g.id} ${pools[g.id].length}`).join(", ")}${summary ? `, summarized ${GROUPS.map((g) => summary[g.id].length).join("/")}` : ""}`);
 
-  const top = sections.find((s) => s.id === "top")?.items || [];
-  const lead = summary?.headline || top.slice(0, 2).map((x) => x.t).join(" / ");
-  const extra = ["spa", "fashion", "hr"].map((id) => sections.find((s) => s.id === id)).filter((s) => s?.items.length).map((s) => `${s.label} ${s.items.length}`);
+  const lead = summary?.headline || groups[0].items.slice(0, 2).map((x) => x.t).join(" / ");
+  const counts = groups.map((g) => `${g.label} ${summary?.[g.id]?.length ?? g.items.length}`).join(" · ");
   await sendPush({
     title: `똑똑해지기 ${today.slice(5).replace("-", "/")}`,
-    body: [lead, extra.join(" · ")].filter(Boolean).join("\n").slice(0, 180),
+    body: [lead, counts].filter(Boolean).join("\n").slice(0, 180),
     url: "./#/news",
   });
 }
