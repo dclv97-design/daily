@@ -8,6 +8,7 @@ import { summarize, touchProb, firstTouch } from "./lib/stats.mjs";
 import { researchCatalysts } from "./lib/claude.mjs";
 import { encryptJson } from "./lib/crypto.mjs";
 import { sendPush } from "./lib/push.mjs";
+import { runNews } from "./lib/news.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
@@ -220,7 +221,8 @@ function fmtPrice(v, market) {
   return market === "KR" ? `${Math.round(v).toLocaleString("ko-KR")}원` : `$${v.toFixed(2)}`;
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+// Stocks first, then the news digest; a stock failure must not block the news (and vice versa).
+let failed = false;
+try { await main(); } catch (e) { console.error(e); failed = true; }
+try { await runNews({ dataDir, today: kstDate() }); } catch (e) { console.error("news:", e); }
+if (failed) process.exit(1);
