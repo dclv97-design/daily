@@ -36,6 +36,8 @@
     { "name": "SK하이닉스", "code": "000660" },
     { "name": "카카오", "code": "035720" }
   ],
+  "recommendUS": false,
+  "_recommendUS": "false = 추천(맞춤·고변동)은 국내만. 보유 미국 종목 점검은 그대로. true로 바꾸면 아래 미국 목록과 미국 고변동 후보가 다시 포함됩니다.",
   "us": ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "AVGO", "ORCL", "CRM", "COST", "ADBE", "AMD", "NFLX", "TSLA", "WMT", "HD", "MU"],
   "criteria": {
     "target": 0.10,
