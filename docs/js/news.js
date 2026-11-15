@@ -1,14 +1,16 @@
-/* 똑똑해지기: 당일·전일 뉴스와 세계 이슈 요약, SPA / 패션 / HR 탭. Data: data/news/*.json (plain). */
+/* 똑똑해지기: 당일·전일 뉴스 요약 - 2030 / 국제 정세 / SPAO 매장 HR, 그리고 읽은 책.
+   Data: data/news/*.json (plain). v2 = groups + story summaries; v1 (2026-11-15 이전) = sections + bullets. */
 (function () {
   const { h } = U;
 
   const TABS = [
-    { id: "brief", label: "브리핑", icon: "globe", href: "#/news" },
-    { id: "spa", label: "SPA", icon: "tag", href: "#/news/spa" },
-    { id: "fashion", label: "패션", icon: "shirt", href: "#/news/fashion" },
-    { id: "hr", label: "HR", icon: "person", href: "#/news/hr" },
+    { id: "brief", label: "브리핑", icon: "home", href: "#/news" },
+    { id: "life", label: "2030", icon: "person", href: "#/news/life" },
+    { id: "world", label: "국제", icon: "globe", href: "#/news/world" },
+    { id: "store", label: "매장 HR", icon: "shirt", href: "#/news/store" },
     { id: "books", label: "책", icon: "book", href: "#/news/books" },
   ];
+  const GROUP_IDS = ["life", "world", "store"];
   const BRIEF = ["top", "world", "biz"];
   const cache = new Map();
 
@@ -51,10 +53,53 @@
     return h("div.empty", h("b", "아직 뉴스가 없습니다"), "평일 아침 분석 때 함께 만들어집니다.");
   }
 
+  /* ---- v2: story cards ---- */
+  function storyCard(s, items) {
+    const refs = (s.refs || []).map((i) => items[i]).filter(Boolean);
+    return h("div.card.story",
+      h("div.story-t", s.title),
+      h("p.story-b", s.body),
+      s.why ? h("p.story-why", h("span.chip", "왜 중요"), s.why) : null,
+      refs.length ? h("div.story-src", refs.map((x) => h("a", { href: x.link, target: "_blank", rel: "noopener" }, x.src || "원문"))) : null);
+  }
+
+  const articleRow = (x) => h("a.list-item.news-item", { href: x.link, target: "_blank", rel: "noopener" },
+    h("div.t", x.t), x.desc ? h("div.d.news-desc", x.desc) : null, h("div.m", h("span", x.src), h("span", ago(x.pub))));
+
+  function groupBlock(d, id, full) {
+    const g = d.groups.find((x) => x.id === id);
+    if (!g) return null;
+    const stories = d.summary?.[id] || [];
+    const box = h("div");
+    if (!full) box.appendChild(h("div.section-title", h("a.plain", { href: `#/news/${id}` }, g.title, " ›")));
+    if (stories.length) stories.forEach((s) => box.appendChild(storyCard(s, g.items)));
+    else if (!full) {
+      if (!g.items.length) box.appendChild(h("p.small.muted", { style: { margin: "4px 4px 12px" } }, "관련 주요 뉴스가 없습니다"));
+      g.items.slice(0, 4).forEach((x) => box.appendChild(articleRow(x)));
+    }
+    if (full) {
+      if (stories.length) box.appendChild(h("div.section-title", "관련 기사"));
+      if (!g.items.length) box.appendChild(h("p.small.muted", { style: { margin: "4px 4px 12px" } }, "관련 주요 뉴스가 없습니다"));
+      g.items.forEach((x) => box.appendChild(articleRow(x)));
+    }
+    return box;
+  }
+
+  function footNote(d) {
+    return h("p.tiny.muted", { style: { margin: "8px 4px 0" } },
+      `${U.dateLabel(d.date)} 아침 기준 · ${d.summary ? "요약은 기사 본문으로 자동 작성되어 틀릴 수 있습니다 · " : ""}출처를 누르면 원문이 열립니다`);
+  }
+
   async function briefView(date) {
     let d;
     try { d = await load(date); } catch { return noData(); }
     const el = h("div");
+    if (d.v >= 2) {
+      if (d.summary?.headline) el.appendChild(h("div.card.news-head", h("div.tiny.muted", "오늘의 한 줄"), h("b", d.summary.headline)));
+      GROUP_IDS.forEach((id) => el.appendChild(groupBlock(d, id, false)));
+      el.appendChild(footNote(d));
+      return el;
+    }
     if (d.summary?.headline) el.appendChild(h("div.card.news-head", h("div.tiny.muted", "오늘의 한 줄"), h("b", d.summary.headline)));
     BRIEF.forEach((id) => el.appendChild(section(d, id, true)));
     if (date) ["spa", "fashion", "hr"].forEach((id) => el.appendChild(section(d, id, true)));
@@ -65,7 +110,12 @@
   async function topicView(id) {
     let d;
     try { d = await load(); } catch { return noData(); }
-    return section(d, id, false);
+    if (d.v >= 2) {
+      const el = h("div", groupBlock(d, id, true));
+      el.appendChild(footNote(d));
+      return el;
+    }
+    return h("div.empty", "새 형식의 뉴스는 다음 아침 분석부터 나옵니다");
   }
 
   async function historyView() {
@@ -135,7 +185,8 @@
         const st = rest[2] ? decodeURIComponent(rest[2]) : null;
         return L("books", arg === "new" ? "책 추가" : "책", bookForm(arg, st), { back: `#/news/books${st ? `/${encodeURIComponent(st)}` : ""}`, noTabs: true });
       }
-      if (["spa", "fashion", "hr"].includes(view)) return L(view, TABS.find((t) => t.id === view).label, topicView(view));
+      const TITLES = { life: "2030이 알아야 할 것", world: "국제 정세", store: "SPAO 매장 HR 체크" };
+      if (GROUP_IDS.includes(view)) return L(view, TITLES[view], topicView(view));
       return L("brief", "똑똑해지기", briefView(), { right: h("button.link-btn.small", { onclick: () => (location.hash = "#/news/history") }, "지난 뉴스") });
     },
   };
