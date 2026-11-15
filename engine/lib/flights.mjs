@@ -149,7 +149,7 @@ export async function runFlights({ dataDir, today }) {
     }).filter(Boolean).sort((a, b) => (a.now?.price ?? a.low.price) - (b.now?.price ?? b.low.price));
     return { id: h.id, label: h.label, must: h.must, rows };
   });
-  const out = { v: 1, date: today, generatedAt: new Date().toISOString(), market: market || "default", holidays };
+  const out = { v: 1, date: today, generatedAt: new Date().toISOString(), market: market || "default", newLows: newLows.filter((x) => x.was).length, holidays };
   writeFileSync(path.join(dir, "latest.json"), JSON.stringify(out));
 
   const nToday = Object.values(found).reduce((s, x) => s + Object.keys(x).length, 0);
