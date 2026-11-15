@@ -31,13 +31,28 @@
   };
 
   /* Launcher */
-  function greeting() {
-    const hr = new Date().getHours();
-    if (hr < 5) return "늦은 밤이에요,\n오늘도 수고했어요";
-    if (hr < 11) return "좋은 아침이에요";
-    if (hr < 14) return "점심은 챙겨 드셨나요";
-    if (hr < 18) return "오후도 야무지게";
-    return "오늘 하루도 수고했어요";
+  // One-line pinned memo at the very top of the main screen (this device only).
+  async function pinnedMemo() {
+    const KEY = "pinnedMemo";
+    let text = (await U.store.kvGet(KEY)) || "";
+    const bar = h("div.pin-memo");
+    const show = () => {
+      bar.innerHTML = "";
+      bar.classList.toggle("is-empty", !text);
+      bar.append(h("span.pin-ic", icon("pushpin")),
+        h("button.pin-text", { onclick: edit }, text || "한 줄 메모를 고정해 두세요"));
+    };
+    const edit = () => {
+      bar.innerHTML = "";
+      const inp = h("input.pin-input", { value: text, maxLength: 80, placeholder: "한 줄 메모", enterKeyHint: "done" });
+      const save = async () => { text = inp.value.trim(); await U.store.kvSet(KEY, text); show(); };
+      inp.addEventListener("keydown", (e) => { if (e.key === "Enter") inp.blur(); if (e.key === "Escape") { inp.value = text; inp.blur(); } });
+      inp.addEventListener("blur", save);
+      bar.append(h("span.pin-ic", icon("pushpin")), inp);
+      inp.focus();
+    };
+    show();
+    return bar;
   }
 
   async function launcher() {
@@ -55,9 +70,12 @@
     const todoSlot = h("div.home-slot.note");
     if (window.News) News.homeCard().then((c) => c && newsSlot.appendChild(c)).catch(() => {});
     if (window.Note) Note.homeTodoCard().then((c) => c && todoSlot.appendChild(c)).catch(() => {});
+    const pinSlot = h("div");
+    pinnedMemo().then((b) => pinSlot.appendChild(b)).catch(() => {});
     const el = h(
       "div.launch",
-      h("div.launch-head", h("div.date", U.dateLabel(U.today())), h("h1", greeting())),
+      pinSlot,
+      h("div.launch-head", h("h1", U.dateLabel(U.today()))),
       h("div.app-grid-card", h("div.app-grid",
         appIcon("stock", "chart", "부자되기", "#/stocks", stockBadge),
         appIcon("news", "globe", "똑똑해지기", "#/news", newsBadge),
