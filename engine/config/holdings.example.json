@@ -1,0 +1,8 @@
+{
+  "_note": "형식 예시입니다. 실제 보유 종목은 이 파일에 쓰지 말고 GitHub 저장소 Secret HOLDINGS_JSON에 넣으세요(저장소가 공개이기 때문). 한국 종목은 code와 cost(원화 총 매수금액), 미국 종목은 ticker와 costKRW(원화 환산 총 매수금액)를 씁니다. realizedPnL은 누적 실현손익(원)이며 선택 항목입니다.",
+  "items": [
+    { "name": "삼성전자", "market": "KR", "code": "005930", "qty": 10, "cost": 2000000 },
+    { "name": "Apple", "market": "US", "ticker": "AAPL", "qty": 2, "costKRW": 900000 }
+  ],
+  "realizedPnL": 0
+}
