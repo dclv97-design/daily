@@ -98,18 +98,38 @@ Three groups:
 - world: the international situation: wars and conflicts, diplomacy, US, China, Japan, North Korea, global economy and trade.
 - store: what the HR person for SPAO stores should know: minimum wage, labor law and enforcement (근로기준법, 주휴수당, 단시간 근로, 근로감독), store staffing, part-time hiring and turnover, scheduling, store openings and closings, competitor moves (Uniqlo, Topten, Musinsa Standard, ZARA, H&M, Shein), SPA and fashion retail trends that change store operations, and E-Land/SPAO news.`;
 
-async function newsCall(prompt, maxTokens) {
+const obj = (properties) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
+const PICK_SCHEMA = (() => {
+  const ids = { type: "array", items: { type: "array", items: { type: "integer" } } };
+  return obj({ life: ids, world: ids, store: ids });
+})();
+const WRITE_SCHEMA = (() => {
+  const list = { type: "array", items: obj({ story: { type: "integer" }, title: { type: "string" }, body: { type: "string" }, why: { type: "string" } }) };
+  return obj({ headline: { type: "string" }, life: list, world: list, store: list });
+})();
+
+async function newsCall(prompt, maxTokens, schema) {
   const client = new Anthropic();
-  // Haiku has no server-side refusal fallback; on a refusal the app shows the plain article list.
-  const res = await client.messages.create({
+  const base = {
     model: NEWS_MODEL,
     max_tokens: maxTokens,
-    output_config: { effort: "low" },
     system: `You prepare a daily news briefing in Korean for one reader. Facts only, taken from the given articles; no opinions or predictions.\n${READER}`,
     messages: [{ role: "user", content: prompt }],
-  });
+  };
+  let res;
+  try {
+    // Structured outputs: the API guarantees valid JSON matching the schema (no broken quotes).
+    res = await client.messages.create({ ...base, output_config: { effort: "low", format: { type: "json_schema", schema } } });
+  } catch (e) {
+    if (!(e instanceof Anthropic.BadRequestError)) throw e;
+    console.log(`claude news: structured output not accepted (${e.message.slice(0, 80)}), retrying as text`);
+    res = await client.messages.create({ ...base, output_config: { effort: "low" } });
+  }
+  // Haiku has no server-side refusal fallback; on a refusal the app shows the plain article list.
   if (res.stop_reason === "refusal") throw new Error("refused");
-  return extractJson(res.content.filter((b) => b.type === "text").map((b) => b.text).join("\n"));
+  if (res.stop_reason === "max_tokens") throw new Error("output cut off (max_tokens)");
+  const text = res.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+  try { return JSON.parse(text); } catch { return extractJson(text); }
 }
 
 // Step 1: choose up to 5 stories per group from titles and lead text. Returns {life: [[ids]], world: [...], store: [...]}.
@@ -128,7 +148,7 @@ ${list}
 Return only this JSON inside <json></json> tags (numbers are the article numbers of that group):
 <json>{"life": [[0, 4], [2]], "world": [[1]], "store": [[3]]}</json>`;
   try {
-    return await newsCall(prompt, 2000);
+    return await newsCall(prompt, 3000, PICK_SCHEMA);
   } catch (e) {
     console.log(`claude news pick: ${e.message}`);
     return null;
@@ -152,7 +172,7 @@ ${blocks}
 Return only this JSON inside <json></json> tags:
 <json>{"headline": "", "life": [{"story": 0, "title": "", "body": "", "why": ""}], "world": [], "store": []}</json>`;
   try {
-    return await newsCall(prompt, 6000);
+    return await newsCall(prompt, 10000, WRITE_SCHEMA);
   } catch (e) {
     console.log(`claude news write: ${e.message}`);
     return null;
