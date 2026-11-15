@@ -2,7 +2,7 @@
 // one-month events for the given tickers, using the server-side web search tool.
 import Anthropic from "@anthropic-ai/sdk";
 
-const MODEL = "claude-opus-5-5";
+const MODEL = "claude-sonnet-5-5";
 
 const SYSTEM = `You are a research assistant for Korean (KOSPI/KOSDAQ) and US (NYSE/NASDAQ) equities.
 You only gather facts; you never give buy/sell instructions.
@@ -55,7 +55,7 @@ Return only this JSON inside <json></json> tags:
         fallbacks: "default",
         output_config: { effort: "medium" },
         system: SYSTEM,
-        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 20 }],
+        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 10 }],
         messages,
       });
     } catch (error) {
