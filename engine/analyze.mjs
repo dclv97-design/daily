@@ -18,6 +18,7 @@ const DISCLAIMER = "본 내용은 정보 제공 목적이며 투자 자문이 �
 const universe = JSON.parse(readFileSync(path.join(here, "config", "universe.json"), "utf8"));
 const C = universe.criteria;
 const HVC = universe.highvol;
+const US_PICKS = universe.recommendUS === true; // 추천에 미국 종목 포함 여부 (보유 점검과는 무관)
 const warnings = [];
 
 function loadHoldings() {
@@ -58,7 +59,7 @@ async function main() {
     targets.get(k).tags.add(tag);
   };
   universe.kr.forEach((s) => add("KR", s.code, s.name, "universe"));
-  universe.us.forEach((t) => add("US", t, t, "universe"));
+  if (US_PICKS) universe.us.forEach((t) => add("US", t, t, "universe"));
   holdings.items.forEach((h) => add(h.market, symOf(h), h.name, "holding"));
 
   // 2) Prices
@@ -117,7 +118,7 @@ async function main() {
     ...holdings.items.map((h) => ({ name: h.name, market: h.market, symbol: symOf(h) })),
     ...customPicks.map((p) => ({ name: p.name, market: p.market, symbol: p.symbol })),
   ];
-  const research = await researchCatalysts({ today, horizonEnd, tickers: eventTickers });
+  const research = await researchCatalysts({ today, horizonEnd, tickers: eventTickers, includeUS: US_PICKS });
   if (!research) warnings.push("촉매 검색을 하지 못했습니다(API 키 미설정 또는 오류). 이벤트는 미확인으로 표시됩니다.");
   const events = research?.events || {};
   customPicks.forEach((p) => { p.event = events[p.symbol] || null; });
@@ -125,7 +126,7 @@ async function main() {
   // 5) High-volatility screen (+20% / -10%) on the researched candidates
   const highvol = { picks: [], rejected: [], available: !!research };
   if (research?.candidates?.length) {
-    const cands = research.candidates.filter((c) => c.symbol && (c.market === "KR" || c.market === "US")).slice(0, 8);
+    const cands = research.candidates.filter((c) => c.symbol && (c.market === "KR" || (US_PICKS && c.market === "US"))).slice(0, 8);
     await pool(cands, async (c) => {
       const k = key(c.market, c.symbol);
       if (!quotes.has(k)) await load({ market: c.market, symbol: c.symbol });
