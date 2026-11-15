@@ -11,7 +11,10 @@
     { id: "vs", label: "VS", icon: "vs", href: "#/note/vs" },
   ];
 
-  const MEMO_SEGS = ["note", "todo", "thinks", "judge"];
+  const MEMO_SEGS = ["todo", "note", "thinks", "judge"];
+  const TODO_KINDS = ["스케줄", "약속", "해야 할 일"];
+  const kindLabel = (k) => (!k || k === "task" ? "해야 할 일" : k);
+  let revealHidden = false; // 숨긴 스토리 보기 (앱을 닫으면 다시 숨김)
   const MEALS = ["아침", "점심", "저녁"];
   const PEOPLE = ["혼자", "가족", "친구", "동료", "연인"];
   const PREF_SEGS = ["good", "dislike"];
@@ -25,7 +28,7 @@
       fields: [{ k: "content", label: "생각", type: "textarea", req: true, tall: true }],
     },
     note: {
-      label: "Note", icon: "chat",
+      label: "Conv.", icon: "chat",
       title: (e) => [e.who, e.where].filter(Boolean).join(" · "),
       detail: (e) => (e.keywords || []).filter(Boolean).map((k) => `#${k}`).join(" "),
       fields: [
@@ -41,10 +44,11 @@
       title: (e) => e.title,
       detail: (e) => e.memo || "",
       fields: [
-        { k: "kind", label: "종류", type: "single", options: ["스케줄", "약속", "task"], def: () => "task" },
-        { k: "title", label: "할 일", type: "text", req: true },
-        { k: "due", label: "날짜", type: "date" },
-        { k: "time", label: "시간", type: "time" },
+        { k: "kind", label: "종류", type: "single", options: TODO_KINDS, def: () => "해야 할 일" },
+        { k: "title", label: "내용", type: "text", req: true },
+        { k: "someday", label: "언젠가", type: "check", rerender: true },
+        { k: "due", label: "D-DAY", type: "date", showIf: (e) => !e.someday },
+        { k: "time", label: "시간", type: "time", showIf: (e) => !e.someday },
         { k: "memo", label: "메모", type: "textarea" },
       ],
     },
@@ -54,7 +58,7 @@
       detail: (e) => e.flaw || "",
       fields: [
         { k: "about", label: "어떤 대화/일", type: "text", req: true },
-        { k: "noteRef", label: "관련 Note", type: "noteRef" },
+        { k: "noteRef", label: "관련 Conv.", type: "noteRef" },
         { k: "flaw", label: "아쉬웠던 점", type: "textarea", req: true },
         { k: "thinking", label: "생각 과정", type: "textarea", tall: true },
         { k: "next", label: "다음엔", type: "textarea" },
@@ -89,6 +93,7 @@
         { k: "story", label: "내용", type: "textarea", req: true, tall: true },
         { k: "when", label: "언제", type: "date", def: () => U.today() },
         { k: "who", label: "누구와", type: "text" },
+        { k: "hidden", label: "숨기기", type: "check" },
       ],
     },
     vs: {
@@ -100,18 +105,47 @@
   };
   TYPES.meal = {
     label: "식사", icon: "today",
-    title: (e) => `${e.slot} · ${e.menu || (e.media ? "사진" : "")}`,
-    detail: (e) => (e.with || []).join(", "),
+    title: (e) => `${e.slot} · ${mealName(e)}`,
+    detail: (e) => mealMeta(e),
     fields: [
       { k: "slot", label: "끼니", type: "single", options: MEALS, req: true },
-      { k: "mode", label: "기록 방식", type: "single", options: ["텍스트", "사진"], def: () => "텍스트", rerender: true },
-      { k: "menu", label: "메뉴", type: "text", req: true, showIf: (e) => e.mode !== "사진" },
-      { k: "media", label: "사진", type: "media", photoOnly: true, showIf: (e) => e.mode === "사진" },
+      { k: "media", label: "사진", type: "media", photoOnly: true, exif: true },
+      { k: "menu", label: "메뉴", type: "text" },
+      { k: "place", label: "상호명", type: "place" },
+      { k: "geo", label: "사진 위치", type: "geo", showIf: (e) => e.lat != null },
       { k: "with", label: "누구랑", type: "people" },
       { k: "date", label: "날짜", type: "date", def: () => U.today() },
+      { k: "time", label: "시간", type: "time" },
+      { k: "memo", label: "메모", type: "textarea" },
     ],
   };
   TYPES.episode = TYPES.story; // older backups
+  // 읽은 책 (똑똑해지기 앱의 책 탭에서 쓴다)
+  const BOOK_STATUS = ["읽는 중", "다 읽음", "읽고 싶음"];
+  TYPES.book = {
+    label: "책", icon: "book",
+    title: (e) => e.title,
+    detail: (e) => e.author || "",
+    fields: [
+      { k: "media", label: "표지", type: "media", photoOnly: true },
+      { k: "title", label: "제목", type: "text", req: true },
+      { k: "author", label: "저자", type: "text" },
+      { k: "status", label: "상태", type: "single", options: BOOK_STATUS, def: () => "다 읽음", rerender: true },
+      { k: "rating", label: "별점", type: "rating", showIf: (e) => e.status === "다 읽음" },
+      { k: "date", label: "다 읽은 날", type: "date", def: () => U.today(), showIf: (e) => e.status === "다 읽음" },
+      { k: "quote", label: "기억에 남는 문장", type: "textarea" },
+      { k: "memo", label: "생각", type: "textarea", tall: true },
+    ],
+  };
+
+  function mealName(e) { return e.menu || e.place || (e.media ? "사진" : ""); }
+  function mealMeta(e) { return [e.time, e.place && e.menu ? e.place : null, (e.with || []).join(", ")].filter(Boolean).join(" · "); }
+  const slotFromTime = (t) => { const hr = Number((t || "").slice(0, 2)); return hr < 11 ? "아침" : hr < 16 ? "점심" : "저녁"; };
+  function dday(due) {
+    const n = Math.round((new Date(due + "T00:00:00") - new Date(U.today() + "T00:00:00")) / 86400000);
+    return n === 0 ? "D-DAY" : n > 0 ? `D-${n}` : `D+${-n}`;
+  }
+  const todoSort = (a, b) => (a.someday ? 1 : 0) - (b.someday ? 1 : 0) || (a.due || "9").localeCompare(b.due || "9") || (a.time || "").localeCompare(b.time || "");
 
   function firstLine(s) { return (s || "").trim().split("\n")[0].slice(0, 80); }
   function restLines(s) { return (s || "").trim().split("\n").slice(1).join(" ").slice(0, 160); }
@@ -169,6 +203,7 @@
     const e = existing ? { ...existing } : { id: U.uid(), type, createdAt: new Date().toISOString() };
     if (isNew) T.fields.forEach((f) => { if (f.def) e[f.k] = f.def(); });
     if (isNew && opts.preset) Object.assign(e, opts.preset);
+    if (type === "todo") e.kind = kindLabel(e.kind);
     let pending = null;
     let pendingUrl = null;
     const notes = T.fields.some((f) => f.type === "noteRef") ? await listOf("note") : [];
@@ -184,8 +219,33 @@
 
     const renderField = (f) => {
       const wrap = h("div.field");
-      if (f.label) wrap.appendChild(h("div.label", f.label));
-      if (f.type === "text") {
+      if (f.label && f.type !== "check") wrap.appendChild(h("div.label", f.label));
+      if (f.type === "rating") {
+        const stars = h("div.stars");
+        const draw = () => {
+          stars.innerHTML = "";
+          for (let i = 1; i <= 5; i++) stars.appendChild(h(`button.star${(e.rating || 0) >= i ? ".on" : ""}`, { type: "button", "aria-label": `${i}점`, onclick: () => { e.rating = e.rating === i ? 0 : i; draw(); } }, "★"));
+        };
+        draw();
+        wrap.appendChild(stars);
+      } else if (f.type === "check") {
+        wrap.appendChild(h("label.check-row",
+          h("input", { type: "checkbox", checked: !!e[f.k], onchange: (ev) => { e[f.k] = ev.target.checked; if (f.rerender) renderAll(); } }),
+          h("span", f.label)));
+      } else if (f.type === "place") {
+        const input = h("input.input", { value: e.place || "", placeholder: "가게 이름", oninput: (ev) => (e.place = ev.target.value) });
+        wrap.appendChild(input);
+        if (e.geoName && e.geoName !== e.place) {
+          wrap.appendChild(h("button.chip.near", { type: "button", onclick: () => { e.place = e.geoName; input.value = e.geoName; } }, icon("pin"), `근처: ${e.geoName}`));
+        }
+      } else if (f.type === "geo") {
+        const map = `https://maps.apple.com/?ll=${e.lat},${e.lng}&q=${encodeURIComponent(e.place || e.geoName || "식사")}`;
+        wrap.appendChild(h("div.geo-row",
+          h("span.geo-ic", icon("pin")),
+          h("span.grow.small", e.addr || "주소 확인 중…"),
+          h("a.link-btn.small", { href: map, target: "_blank", rel: "noopener" }, "지도"),
+          h("button.link-btn.small", { type: "button", onclick: () => { delete e.lat; delete e.lng; e.addr = ""; e.geoName = ""; renderAll(); } }, "지우기")));
+      } else if (f.type === "text") {
         wrap.appendChild(h("input.input", { value: e[f.k] || "", oninput: (ev) => (e[f.k] = ev.target.value) }));
       } else if (f.type === "textarea") {
         wrap.appendChild(h("textarea.input", { value: e[f.k] || "", style: f.tall ? { minHeight: "160px" } : null, oninput: (ev) => (e[f.k] = ev.target.value) }));
@@ -263,9 +323,11 @@
                 pendingUrl = URL.createObjectURL(file);
                 show("video", pendingUrl);
               } else {
+                const meta = f.exif ? await U.readExif(file) : null;
                 pending = { kind: "image", full: await U.resizeImage(file, 1600), thumb: await U.resizeImage(file, 420) };
                 pendingUrl = URL.createObjectURL(pending.thumb);
-                show("image", pendingUrl);
+                if (f.exif) applyPhotoMeta(meta);
+                else show("image", pendingUrl);
               }
             } catch (err) { U.toast(err.message); }
           },
@@ -276,13 +338,35 @@
           box.appendChild(kind === "video" ? h("video", { src: url, controls: true, playsInline: true, style: { width: "100%", maxHeight: "360px", display: "block" } }) : h("img", { src: url, alt: "" }));
           change.style.display = "";
         };
-        box.appendChild(h("span.muted.small", "사진 또는 영상"));
+        box.appendChild(h("span.muted.small", f.photoOnly ? "사진" : "사진 또는 영상"));
         wrap.append(box, fileInput, change);
         if (pending) show(pending.kind, pendingUrl);
         else if (e.media) mediaUrl(e.media, e.mediaType !== "video").then((u) => u && show(e.mediaType || "image", u));
       }
       return wrap;
     };
+
+    // 식사 사진: 촬영 날짜·시간·위치를 채우고, 위치는 근처 가게 이름까지 찾아 본다
+    function applyPhotoMeta(m) {
+      const got = [];
+      if (m?.date) { e.date = m.date; got.push("날짜"); }
+      if (m?.time) {
+        e.time = m.time;
+        got.push("시간");
+        if (isNew && !opts.preset?.slot) e.slot = slotFromTime(m.time);
+      }
+      if (m?.lat != null) { e.lat = m.lat; e.lng = m.lng; e.addr = ""; e.geoName = ""; got.push("위치"); }
+      renderAll();
+      U.toast(got.length ? `사진에서 ${got.join("·")}를 불러왔습니다` : "사진에 촬영 정보가 없습니다");
+      if (m?.lat != null) {
+        U.reverseGeocode(m.lat, m.lng).then((g) => {
+          if (e.lat !== m.lat) return;
+          e.addr = g?.area || `${m.lat.toFixed(5)}, ${m.lng.toFixed(5)}`;
+          e.geoName = g?.name || "";
+          renderAll();
+        });
+      }
+    }
 
     const fieldsBox = h("div");
     const visible = () => T.fields.filter((f) => !f.showIf || f.showIf(e));
@@ -299,7 +383,8 @@
         h("button.btn", { type: "submit" }, "저장")));
 
     async function save() {
-      if (type === "meal" && e.mode === "사진" && !pending && !e.media) { errBox.textContent = "사진을 골라 주세요."; return; }
+      if (type === "meal" && !pending && !e.media && !String(e.menu || "").trim() && !String(e.place || "").trim()) { errBox.textContent = "사진이나 메뉴를 입력하세요."; return; }
+      if (type === "todo" && e.someday) { delete e.due; delete e.time; }
       let miss = visible().find((f) => f.req && (f.type === "keywords" ? !(e.keywords || []).some((k) => k.trim()) : !String(e[f.k] || "").trim()));
       if (type === "vs" && (!String(e.a || "").trim() || !String(e.b || "").trim())) miss = { label: "양쪽" };
       if (miss) { errBox.textContent = `${miss.label}을(를) 입력하세요.`; return; }
@@ -337,7 +422,8 @@
   }
 
   function todoRow(e, rerender) {
-    const overdue = !e.done && e.due && e.due < U.today();
+    const overdue = !e.done && !e.someday && e.due && e.due < U.today();
+    const soon = !e.done && !e.someday && e.due && e.due >= U.today() && e.due <= U.addDays(U.today(), 3);
     return h("div.list-item.row", { style: { cursor: "default" } },
       h("input", {
         type: "checkbox", checked: !!e.done, "aria-label": "완료",
@@ -346,8 +432,10 @@
       }),
       h("button.grow", { style: { border: 0, background: "none", textAlign: "left", padding: 0, cursor: "pointer" }, onclick: () => (location.hash = `#/note/edit/${e.id}`) },
         h("div.t", { style: e.done ? { textDecoration: "line-through", color: "var(--ink-3)" } : null }, e.title),
-        h("div.m", h("span.chip", e.kind || "task"),
-          e.due ? h(`span${overdue ? ".up" : ""}`, `${U.dateLabel(e.due)}${e.time ? ` ${e.time}` : ""}`) : e.time ? h("span", e.time) : null)));
+        h("div.m", h("span.chip", kindLabel(e.kind)),
+          e.someday ? h("span.chip.someday", "언젠가")
+            : e.due ? [h(`span.dday${overdue ? ".over" : soon ? ".soon" : ""}`, dday(e.due)), h("span", `${U.dateLabel(e.due)}${e.time ? ` ${e.time}` : ""}`)]
+              : e.time ? h("span", e.time) : null)));
   }
 
   function vsRow(e, rerender) {
@@ -404,7 +492,7 @@
       const photo = mine.find((m) => m.media);
       const url = photo ? await mediaUrl(photo.media, true) : null;
       if (url) btn.appendChild(h("img", { src: url, alt: "" }));
-      btn.append(h("b", s), h("span", mine.length ? mine.map((m) => m.menu || "사진").join(", ") : "+"));
+      btn.append(h("b", s), h("span", mine.length ? mine.map(mealName).join(", ") : "+"));
       if (mine.length) btn.appendChild(h("span.with", (mine[0].with || []).join(", ")));
       slots.appendChild(btn);
     }
@@ -422,11 +510,12 @@
     goodCard.appendChild(await formView("good", null, { onSaved: () => Note.route([]) }));
     el.appendChild(goodCard);
 
-    const open = todos.filter((t) => !t.done && (!t.due || t.due <= today)).sort((a, b) => (a.due || "9").localeCompare(b.due || "9") || (a.time || "").localeCompare(b.time || ""));
+    const week = U.addDays(today, 7);
+    const open = todos.filter((t) => !t.done && !t.someday && (!t.due || t.due <= week)).sort(todoSort);
     const todoBox = h("div");
     const drawTodos = () => { todoBox.innerHTML = ""; open.filter((t) => !t.done).forEach((t) => todoBox.appendChild(todoRow(t, drawTodos))); };
     drawTodos();
-    el.append(h("div.section-title", h("span", "오늘 할 일"), h("button.link-btn.small", { onclick: () => (location.hash = "#/note/new/todo") }, "+ 추가")), todoBox);
+    el.append(h("div.section-title", h("span", "할 일 · 7일 안"), h("button.link-btn.small", { onclick: () => (location.hash = "#/note/new/todo") }, "+ 추가")), todoBox);
 
     el.append(h("div.section-title", "바로 쓰기"),
       h("div.quick.icons", MEMO_SEGS.map((t) => h("button", { onclick: () => (location.hash = `#/note/new/${t}`) }, h("span.q-ic", icon(TYPES[t].icon)), h("b", TYPES[t].label)))));
@@ -434,14 +523,17 @@
   }
 
   async function memoView(cur) {
-    cur = MEMO_SEGS.includes(cur) ? cur : "thinks";
+    cur = MEMO_SEGS.includes(cur) ? cur : "todo";
     const list = await listOf(cur);
     const el = h("div", seg(MEMO_SEGS, cur, "#/note/memo", true));
     if (cur === "todo") {
       const box = h("div");
       const draw = () => {
         box.innerHTML = "";
-        list.filter((t) => !t.done).sort((a, b) => (a.due || "9").localeCompare(b.due || "9") || (a.time || "").localeCompare(b.time || "")).forEach((t) => box.appendChild(todoRow(t, draw)));
+        const open = list.filter((t) => !t.done).sort(todoSort);
+        open.filter((t) => !t.someday).forEach((t) => box.appendChild(todoRow(t, draw)));
+        const someday = open.filter((t) => t.someday);
+        if (someday.length) { box.appendChild(h("div.section-title", "언젠가")); someday.forEach((t) => box.appendChild(todoRow(t, draw))); }
         const done = list.filter((t) => t.done);
         if (done.length) { box.appendChild(h("div.section-title", "완료")); done.slice(0, 30).forEach((t) => box.appendChild(todoRow(t, draw))); }
       };
@@ -477,7 +569,7 @@
       const row = h("button.list-item.row", { onclick: () => (location.hash = `#/note/edit/${m.id}`) });
       const url = m.media ? await mediaUrl(m.media, true) : null;
       if (url) row.appendChild(h("img", { src: url, alt: "", style: { width: "52px", height: "52px", objectFit: "cover", borderRadius: "10px", flex: "none" } }));
-      row.appendChild(h("div.grow", h("div.t", `${m.slot} · ${m.menu || "사진"}`), (m.with || []).length ? h("div.d", m.with.join(", ")) : null));
+      row.appendChild(h("div.grow", h("div.t", `${m.slot} · ${mealName(m)}`), mealMeta(m) ? h("div.d", mealMeta(m)) : null));
       el.appendChild(row);
     }
     el.appendChild(h("button.fab", { "aria-label": "추가", onclick: () => (location.hash = "#/note/new/meal") }, icon("plus")));
@@ -485,15 +577,24 @@
   }
 
   async function storyView(cur) {
-    const tabs = h("div.seg",
+    // 사주 버튼 바로 위의 보이지 않는 영역: 누르면 숨긴 스토리 보기/다시 숨기기
+    const secret = h("button.secret-tap", {
+      type: "button", "aria-hidden": "true", tabindex: "-1",
+      onclick: () => {
+        revealHidden = !revealHidden;
+        if (location.hash !== "#/note/story") location.hash = "#/note/story";
+        else Note.route(["story"]);
+      },
+    });
+    const tabs = h("div.seg-wrap", secret, h("div.seg",
       h(`button${cur !== "saju" ? ".on" : ""}`, { onclick: () => (location.hash = "#/note/story") }, "스토리"),
-      h(`button${cur === "saju" ? ".on" : ""}`, { onclick: () => (location.hash = "#/note/story/saju") }, "사주"));
+      h(`button${cur === "saju" ? ".on" : ""}`, { onclick: () => (location.hash = "#/note/story/saju") }, "사주")));
     if (cur === "saju") return h("div", tabs, await sajuView());
-    const list = [...(await listOf("story")), ...(await listOf("episode"))];
+    const list = [...(await listOf("story")), ...(await listOf("episode"))].filter((e) => revealHidden || !e.hidden);
     const el = h("div", tabs);
     list.forEach((e) => el.appendChild(h("button.list-item", { onclick: () => (location.hash = `#/note/edit/${e.id}`) },
       h("div.t", e.title), h("div.d", e.story),
-      h("div.m", h("span", U.dateLabel(e.when || e.date)), e.who ? h("span", e.who) : null))));
+      h("div.m", h("span", U.dateLabel(e.when || e.date)), e.who ? h("span", e.who) : null, e.hidden ? h("span.chip", "숨김") : null))));
     el.appendChild(fab("story"));
     return el;
   }
@@ -800,12 +901,16 @@
     if (type === "story" || type === "episode") return "#/note/story";
     if (type === "vs") return "#/note/vs";
     if (type === "meal") return "#/note";
+    if (type === "book") return "#/news/books";
     return "#/note";
   }
 
   window.Note = {
     launcherMeta,
     launcherCount,
+    form: formView,
+    mediaUrl,
+    BOOK_STATUS,
     exportBackup,
     importBackup,
     async route(rest) {
@@ -826,7 +931,7 @@
       if (view === "pref") return L("pref", "선호", prefView(arg));
       if (view === "story" || view === "episode") return L("story", "스토리", storyView(arg));
       if (view === "vs") return L("vs", "VS", vsView());
-      return L("today", "똑똑해지기", todayView(), { right: h("div.sub", U.dateLabel(U.today())) });
+      return L("today", "똑부러지기", todayView(), { right: h("div.sub", U.dateLabel(U.today())) });
     },
   };
 })();

@@ -6,7 +6,7 @@
 
   App.layout = function ({ app, title, sub, back = "#/", right, tabs, active, body, noTabs }) {
     root.innerHTML = "";
-    const wrap = h(`div.app${app === "note" ? ".note" : ""}`);
+    const wrap = h(`div.app${app ? `.${app}` : ""}`);
     const top = h(
       "header.topbar",
       h("button.icon-btn", { "aria-label": "뒤로", onclick: () => (location.hash = back) }, icon(back === "#/" ? "home" : "back")),
@@ -34,23 +34,28 @@
   async function launcher() {
     root.innerHTML = "";
     const stockBadge = h("span.app-badge", { style: { display: "none" } });
+    const newsBadge = h("span.app-badge", { style: { display: "none" } });
     const noteBadge = h("span.app-badge", { style: { display: "none" } });
     const appIcon = (cls, ic, label, href, badge) =>
       h(`button.app-icon.${cls}`, { onclick: () => (location.hash = href) },
         h("span.app-square", icon(ic), badge), h("span.app-label", label));
+    const q = window.Quotes ? Quotes.today() : null;
     const el = h(
       "div.launch",
       h("h1", U.dateLabel(U.today())),
       h("div.app-grid",
         appIcon("stock", "chart", "부자되기", "#/stocks", stockBadge),
-        appIcon("note", "note", "똑똑해지기", "#/note", noteBadge)),
+        appIcon("news", "globe", "똑똑해지기", "#/news", newsBadge),
+        appIcon("note", "note", "똑부러지기", "#/note", noteBadge)),
+      q ? h("p.daily-quote", h("span", `“${q.t}”`), h("span.by", `- ${q.by}`)) : null,
       h("div.foot", h("span", "모든 노트는 이 기기에만 저장됩니다"), h("button.link-btn", { onclick: () => (location.hash = "#/settings") }, "설정")),
     );
     root.appendChild(el);
-    // Badges: new report today / todos due
+    // Badges: new report / news today, todos due
     fetch("data/index.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((idx) => {
       if (idx?.dates?.[0] === U.today()) { stockBadge.textContent = "N"; stockBadge.style.display = ""; }
     }).catch(() => {});
+    if (window.News) News.hasToday().then((y) => { if (y) { newsBadge.textContent = "N"; newsBadge.style.display = ""; } });
     if (window.Note) Note.launcherCount().then((n) => { if (n) { noteBadge.textContent = n; noteBadge.style.display = ""; } });
   }
 
@@ -153,6 +158,7 @@
       if (app === "settings") return settings();
       if (app === "stocks") return Stocks.route(rest);
       if (app === "note") return Note.route(rest);
+      if (app === "news") return News.route(rest);
       return launcher();
     } catch (e) {
       console.error(e);

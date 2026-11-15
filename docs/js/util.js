@@ -54,6 +54,10 @@
     scale: '<path d="M12 4v16M7 20h10M5 8h14"/><path d="M5 8l-2.5 6a3 3 0 0 0 5 0zM19 8l-2.5 6a3 3 0 0 0 5 0z"/>',
     vs: '<path d="M4 7h11l-3-3M20 17H9l3 3"/>',
     book: '<path d="M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h10"/>',
+    globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.6 5.4 3.6 8.5s-1.1 5.9-3.6 8.5c-2.5-2.6-3.6-5.4-3.6-8.5s1.1-5.9 3.6-8.5z"/>',
+    tag: '<path d="M3.5 12.5V4h8.5l8.5 8.5-8.5 8.5z"/><circle cx="8" cy="8.5" r="1.4"/>',
+    shirt: '<path d="M8 4l4 2 4-2 5 4-3 3-2-1.5V20H8V9.5L6 11 3 8z"/>',
+    pin: '<path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>',
   };
   U.icon = (name) => {
     const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -197,7 +201,80 @@
     });
   };
 
-  U.blobToDataUrl = (b) => new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(b); });
+  // Photo metadata (JPEG EXIF): shooting date/time and GPS. Read before resizing (the canvas drops EXIF).
+  U.readExif = async function (file) {
+    try {
+      const buf = await file.slice(0, 256 * 1024).arrayBuffer();
+      const v = new DataView(buf);
+      if (v.getUint16(0) !== 0xffd8) return null;
+      let off = 2;
+      while (off + 10 < v.byteLength) {
+        const marker = v.getUint16(off);
+        if ((marker & 0xff00) !== 0xff00) break;
+        const len = v.getUint16(off + 2);
+        if (marker === 0xffe1 && v.getUint32(off + 4) === 0x45786966) return parseTiff(v, off + 10);
+        off += 2 + len;
+      }
+    } catch { /* not a readable JPEG */ }
+    return null;
+  };
+  function parseTiff(v, t) {
+    const le = v.getUint16(t) === 0x4949;
+    const u16 = (o) => v.getUint16(t + o, le);
+    const u32 = (o) => v.getUint32(t + o, le);
+    const ifd = (o) => {
+      const m = {};
+      const n = u16(o);
+      for (let i = 0; i < n; i++) { const e = o + 2 + i * 12; m[u16(e)] = { type: u16(e + 2), count: u32(e + 4), voff: e + 8 }; }
+      return m;
+    };
+    const SIZE = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 9: 4, 10: 8 };
+    const val = (en) => {
+      if (!en) return null;
+      const { type, count, voff } = en;
+      const at = (SIZE[type] || 1) * count > 4 ? u32(voff) : voff;
+      if (type === 2) { let s = ""; for (let i = 0; i < count; i++) { const c = v.getUint8(t + at + i); if (!c) break; s += String.fromCharCode(c); } return s; }
+      if (type === 5) { const a = []; for (let i = 0; i < count; i++) a.push(u32(at + i * 8) / (u32(at + i * 8 + 4) || 1)); return a; }
+      if (type === 3) return u16(at);
+      if (type === 4) return u32(at);
+      return null;
+    };
+    const out = {};
+    const ifd0 = ifd(u32(4));
+    let dt = null;
+    const exifPtr = val(ifd0[0x8769]);
+    if (exifPtr) { const ex = ifd(exifPtr); dt = val(ex[0x9003]) || val(ex[0x9004]); }
+    dt = dt || val(ifd0[0x0132]);
+    if (dt && /^\d{4}:\d\d:\d\d \d\d:\d\d/.test(dt)) { out.date = dt.slice(0, 10).replace(/:/g, "-"); out.time = dt.slice(11, 16); }
+    const gpsPtr = val(ifd0[0x8825]);
+    if (gpsPtr) {
+      const g = ifd(gpsPtr);
+      const lat = val(g[2]);
+      const lng = val(g[4]);
+      const dms = (a) => a[0] + (a[1] || 0) / 60 + (a[2] || 0) / 3600;
+      if (lat?.length && lng?.length && (dms(lat) || dms(lng))) {
+        out.lat = dms(lat) * (val(g[1]) === "S" ? -1 : 1);
+        out.lng = dms(lng) * (val(g[3]) === "W" ? -1 : 1);
+      }
+    }
+    return out;
+  }
+
+  // Coordinates -> nearby place name and area (OpenStreetMap Nominatim, Korean labels).
+  U.reverseGeocode = async function (lat, lng) {
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&accept-language=ko&lat=${lat.toFixed(6)}&lon=${lng.toFixed(6)}`);
+      if (!r.ok) return null;
+      const j = await r.json();
+      const a = j.address || {};
+      const area = [a.city || a.town || a.county || a.province, a.borough || a.city_district || a.suburb, a.quarter || a.neighbourhood || a.village || a.road].filter(Boolean);
+      return { name: j.name || "", area: [...new Set(area)].join(" ") || j.display_name || "" };
+    } catch {
+      return null;
+    }
+  };
+
+  U.blobToDataUrl =(b) => new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(b); });
   U.dataUrlToBlob = (d) => fetch(d).then((r) => r.blob());
 
   U.isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
