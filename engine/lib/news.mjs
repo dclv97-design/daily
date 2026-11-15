@@ -6,7 +6,7 @@
 // Without an API key the app shows the newest articles with their lead text.
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { pickNewsStories, writeNewsStories } from "./claude.mjs";
+import { pickNewsStories, summarizeStory } from "./claude.mjs";
 import { sendPush } from "./push.mjs";
 
 const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
@@ -113,38 +113,30 @@ export async function runNews({ dataDir, today }) {
   const pools = {};
   for (const g of GROUPS) pools[g.id] = await collect(g, now);
 
-  // 1) Claude picks the stories (ids like life:3), 2) reads their text and summarizes.
+  // 1) Claude picks the stories from titles and lead text,
+  // 2) each story is summarized in its own call from the article text, so its sources always match.
   let summary = null;
   const picks = await pickNewsStories({ today, groups: GROUPS.map((g) => ({ id: g.id, title: g.title, items: pools[g.id] })) });
   if (picks) {
-    const stories = {};
+    summary = { headline: picks.headline || "" };
     for (const g of GROUPS) {
-      stories[g.id] = [];
+      summary[g.id] = [];
+      const used = new Set();
       for (const ids of (picks[g.id] || []).slice(0, 5)) {
-        const refs = [...new Set(ids)].map((i) => Number(i)).filter((i) => pools[g.id][i]).slice(0, 3);
+        const refs = [...new Set(ids)].map((i) => Number(i)).filter((i) => pools[g.id][i] && !used.has(i)).slice(0, 3);
         if (!refs.length) continue;
         const arts = [];
         for (const i of refs.slice(0, 2)) {
           const x = pools[g.id][i];
           arts.push({ t: x.t, src: x.src, text: (await articleText(x.link)) || x.desc });
         }
-        stories[g.id].push({ refs, arts });
+        const s = await summarizeStory({ today, group: g.id, arts });
+        if (!s) continue;
+        refs.forEach((i) => used.add(i));
+        summary[g.id].push({ ...s, refs });
       }
     }
-    summary = await writeNewsStories({ today, groups: GROUPS.map((g) => ({ id: g.id, title: g.title, stories: stories[g.id] })) });
-    if (summary) {
-      for (const g of GROUPS) {
-        // match each summary to its story by the story number the model echoes back (never by position),
-        // keep one summary per story, and drop anything the model added.
-        const byStory = new Map();
-        for (const s of summary[g.id] || []) {
-          const k = Number(s.story);
-          if (!Number.isInteger(k) || !stories[g.id][k] || byStory.has(k) || !s.title) continue;
-          byStory.set(k, { title: s.title, body: s.body, why: s.why, refs: stories[g.id][k].refs });
-        }
-        summary[g.id] = [...byStory.keys()].sort((a, b) => a - b).map((k) => byStory.get(k));
-      }
-    }
+    if (!GROUPS.some((g) => summary[g.id].length)) summary = null;
   }
 
   // Articles shown under each group: the ones used by the summary first, then the newest.

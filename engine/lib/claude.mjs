@@ -101,12 +101,9 @@ Three groups:
 const obj = (properties) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
 const PICK_SCHEMA = (() => {
   const ids = { type: "array", items: { type: "array", items: { type: "integer" } } };
-  return obj({ life: ids, world: ids, store: ids });
+  return obj({ headline: { type: "string" }, life: ids, world: ids, store: ids });
 })();
-const WRITE_SCHEMA = (() => {
-  const list = { type: "array", items: obj({ story: { type: "integer" }, title: { type: "string" }, body: { type: "string" }, why: { type: "string" } }) };
-  return obj({ headline: { type: "string" }, life: list, world: list, store: list });
-})();
+const STORY_SCHEMA = obj({ title: { type: "string" }, body: { type: "string" }, why: { type: "string" } });
 
 async function newsCall(prompt, maxTokens, schema) {
   const client = new Anthropic();
@@ -140,13 +137,15 @@ export async function pickNewsStories({ today, groups }) {
   }
   const list = groups.map((g) => `## ${g.id} (${g.title})\n${g.items.map((x, i) => `[${i}] ${x.t} (${x.src}) ${x.desc.slice(0, 140)}`).join("\n") || "(none)"}`).join("\n\n");
   const prompt = `Today is ${today} (KST). Below are recent Korean news articles for each group, numbered per group.
-For each group choose up to 5 of the most important stories for this reader, most important first. One story may combine several articles about the same event: list all their numbers.
+For each group choose up to 5 of the most important stories for this reader, most important first.
+A story is one event. Put several article numbers in one story only when they report the same event; never put different events in one story.
 For store, choose only articles that really matter for SPAO store HR or the SPA/fashion retail business; fewer than 5 is fine, and an empty list is fine.
+Also write "headline": one Korean line under 45 characters for the single most important story of the day.
 
 ${list}
 
-Return only this JSON inside <json></json> tags (numbers are the article numbers of that group):
-<json>{"life": [[0, 4], [2]], "world": [[1]], "store": [[3]]}</json>`;
+Return JSON in this shape (numbers are the article numbers of that group):
+{"headline": "", "life": [[0, 4], [2]], "world": [[1]], "store": [[3]]}`;
   try {
     return await newsCall(prompt, 3000, PICK_SCHEMA);
   } catch (e) {
@@ -155,26 +154,27 @@ Return only this JSON inside <json></json> tags (numbers are the article numbers
   }
 }
 
-// Step 2: summarize the chosen stories from their article text.
-export async function writeNewsStories({ today, groups }) {
-  const blocks = groups.map((g) => `## ${g.id} (${g.title})\n${g.stories.map((s, k) => `### story ${k}\n${s.arts.map((a) => `- ${a.t} (${a.src}): ${a.text}`).join("\n")}`).join("\n") || "(none)"}`).join("\n\n");
-  const prompt = `Today is ${today} (KST). For each group below, write exactly one summary per story, using only the article text given for that story.
-Never split a story into two summaries, never merge two stories, and never add a story that is not listed.
-For each story write:
-- "story": the story number as given ("### story N" -> N)
-- "title": a short Korean title, under 30 characters
-- "body": the key content in 2 or 3 plain Korean sentences, under 180 characters, with the concrete numbers, dates and who decided what
-- "why": one line, under 60 characters, on why it matters to this reader (for life: a person in their 20s-30s; for world: Korea or the reader; for store: SPAO store HR or store operations). Do not invent effects the articles do not support; when the effect is unclear, name what to watch next. Do not write about what the article does not mention.
-Also write "headline": one line under 45 characters for the single most important story of the day.
+// Step 2: summarize ONE story from its article text (one call per story, so a summary can never
+// end up under another story's sources). Returns {title, body, why} or null.
+const WHY_FOR = {
+  life: "a Korean in their 20s or 30s",
+  world: "Korea or this reader",
+  store: "SPAO store HR or store operations",
+};
+export async function summarizeStory({ today, group, arts }) {
+  const text = arts.map((a, i) => `[article ${i + 1}] ${a.t} (${a.src})\n${a.text}`).join("\n\n");
+  const prompt = `Today is ${today} (KST). Summarize the news story below in Korean, using only this article text.
+If the articles turn out to describe different events, summarize only article 1.
+- "title": a short title, under 30 characters
+- "body": the key content in 2 or 3 plain sentences, under 180 characters, with the concrete numbers, dates and who decided what
+- "why": one line, under 60 characters, on why it matters to ${WHY_FOR[group]}. Do not invent effects the article does not support; when the effect is unclear, name what to watch next. Do not mention what the article leaves out.
 
-${blocks}
-
-Return only this JSON inside <json></json> tags:
-<json>{"headline": "", "life": [{"story": 0, "title": "", "body": "", "why": ""}], "world": [], "store": []}</json>`;
+${text}`;
   try {
-    return await newsCall(prompt, 10000, WRITE_SCHEMA);
+    const s = await newsCall(prompt, 2000, STORY_SCHEMA);
+    return s?.title && s?.body ? { title: s.title, body: s.body, why: s.why || "" } : null;
   } catch (e) {
-    console.log(`claude news write: ${e.message}`);
+    console.log(`claude news story (${group}): ${e.message}`);
     return null;
   }
 }
