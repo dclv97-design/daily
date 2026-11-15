@@ -9,6 +9,7 @@ import { researchCatalysts } from "./lib/claude.mjs";
 import { encryptJson } from "./lib/crypto.mjs";
 import { sendPush } from "./lib/push.mjs";
 import { runNews } from "./lib/news.mjs";
+import { runFlights } from "./lib/flights.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
@@ -225,5 +226,7 @@ function fmtPrice(v, market) {
 // Stocks first, then the news digest; a stock failure must not block the news (and vice versa).
 let failed = false;
 try { await main(); } catch (e) { console.error(e); failed = true; }
-try { await runNews({ dataDir, today: kstDate() }); } catch (e) { console.error("news:", e); }
+let flightLine = null;
+try { flightLine = await runFlights({ dataDir, today: kstDate() }); } catch (e) { console.error("flights:", e.message); }
+try { await runNews({ dataDir, today: kstDate(), extraLine: flightLine }); } catch (e) { console.error("news:", e); }
 if (failed) process.exit(1);
