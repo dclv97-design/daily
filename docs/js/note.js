@@ -885,6 +885,27 @@
     }
   }
 
+  // Main screen card: open to-dos that are overdue or due within 7 days (plus undated ones), max 6.
+  async function homeTodoCard() {
+    const today = U.today(), week = U.addDays(today, 7);
+    const all = await listOf("todo");
+    const card = h("div.card.home-card.home-todo");
+    const head = h("div.home-head", h("b", "할 일"), h("span.grow"),
+      h("button.link-btn.small", { onclick: () => (location.hash = "#/note/new/todo") }, "+ 추가"),
+      h("button.link-btn.small", { onclick: () => (location.hash = "#/note/memo/todo") }, "전체"));
+    const box = h("div");
+    const draw = () => {
+      box.innerHTML = "";
+      const open = all.filter((t) => !t.done && !t.someday && (!t.due || t.due <= week)).sort(todoSort);
+      if (!open.length) box.appendChild(h("p.small.muted", { style: { margin: "6px 2px 2px" } }, "7일 안에 할 일이 없습니다"));
+      open.slice(0, 6).forEach((t) => box.appendChild(todoRow(t, draw)));
+      if (open.length > 6) box.appendChild(h("button.link-btn.small", { onclick: () => (location.hash = "#/note/memo/todo") }, `${open.length - 6}개 더 보기`));
+    };
+    draw();
+    card.append(head, box);
+    return card;
+  }
+
   async function launcherMeta() {
     try {
       const todos = await listOf("todo");
@@ -908,6 +929,7 @@
   window.Note = {
     launcherMeta,
     launcherCount,
+    homeTodoCard,
     form: formView,
     mediaUrl,
     BOOK_STATUS,

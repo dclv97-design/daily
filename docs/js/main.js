@@ -41,6 +41,11 @@
       h(`button.app-icon.${cls}`, { onclick: () => (location.hash = href) },
         h("span.app-square", icon(ic), badge), h("span.app-label", label));
     const q = window.Quotes ? Quotes.today() : null;
+    // Main screen cards (filled in once their data loads): news summary and to-dos.
+    const newsSlot = h("div.home-slot.news");
+    const todoSlot = h("div.home-slot.note");
+    if (window.News) News.homeCard().then((c) => c && newsSlot.appendChild(c)).catch(() => {});
+    if (window.Note) Note.homeTodoCard().then((c) => c && todoSlot.appendChild(c)).catch(() => {});
     const el = h(
       "div.launch",
       h("h1", U.dateLabel(U.today())),
@@ -49,6 +54,7 @@
         appIcon("news", "globe", "똑똑해지기", "#/news", newsBadge),
         appIcon("note", "note", "똑부러지기", "#/note", noteBadge),
         appIcon("trip", "plane", "야무져지기", "#/trip", tripBadge)),
+      h("div.home-cards", newsSlot, todoSlot),
       q ? h("p.daily-quote", h("span", `“${q.t}”`), h("span.by", `- ${q.by}`)) : null,
       h("div.foot", h("span", "모든 노트는 이 기기에만 저장됩니다"), h("button.link-btn", { onclick: () => (location.hash = "#/settings") }, "설정")),
     );

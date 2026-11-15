@@ -165,6 +165,28 @@
     return Note.form("book", e);
   }
 
+  // Main screen card: today's one-line headline and the top story of each group.
+  async function homeCard() {
+    let d;
+    try { d = await load(); } catch { return null; }
+    if (d.v < 2) return null;
+    const LABEL = { life: "2030", world: "국제", store: "매장 HR" };
+    const card = h("div.card.home-card.home-news");
+    card.appendChild(h("div.home-head", h("b", "오늘의 뉴스"), h("span.tiny.muted", U.dateLabel(d.date)), h("span.grow"),
+      h("button.link-btn.small", { onclick: () => (location.hash = "#/news") }, "브리핑")));
+    if (d.summary?.headline) card.appendChild(h("p.home-headline", d.summary.headline));
+    for (const id of GROUP_IDS) {
+      const s = d.summary?.[id]?.[0];
+      const g = d.groups.find((x) => x.id === id);
+      const text = s ? s.title : g?.items[0]?.t;
+      if (!text) continue;
+      card.appendChild(h("button.home-news-row", { onclick: () => (location.hash = `#/news/${id}`) },
+        h("span.chip", LABEL[id]),
+        h("span.grow", h("span.home-news-t", text), s?.body ? h("span.home-news-b", s.body) : null)));
+    }
+    return card;
+  }
+
   async function hasToday() {
     try {
       const r = await fetch("data/news/index.json", { cache: "no-store" });
@@ -175,6 +197,7 @@
 
   window.News = {
     hasToday,
+    homeCard,
     route(rest) {
       const [view, arg] = rest;
       const L = (active, title, body, extra = {}) => App.layout({ app: "news", title, tabs: TABS, active, body, ...extra });
