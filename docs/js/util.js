@@ -48,6 +48,12 @@
     person: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
     refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/>',
     trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+    bulb: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>',
+    chat: '<path d="M5 5h14v10H9l-4 4z"/><path d="M9 9h6M9 12h4"/>',
+    check: '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>',
+    scale: '<path d="M12 4v16M7 20h10M5 8h14"/><path d="M5 8l-2.5 6a3 3 0 0 0 5 0zM19 8l-2.5 6a3 3 0 0 0 5 0z"/>',
+    vs: '<path d="M4 7h11l-3-3M20 17H9l3 3"/>',
+    book: '<path d="M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h10"/>',
   };
   U.icon = (name) => {
     const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -148,11 +154,28 @@
     return close;
   };
 
-  U.confirm = (msg) => window.confirm(msg);
+  // In-app confirm sheet (native confirm() is blocked in some web views and home-screen apps).
+  U.ask = function (msg, { ok = "확인", cancel = "취소", danger = false } = {}) {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (v) => { if (done) return; done = true; close(); resolve(v); };
+      const close = U.sheet(null, U.h("div",
+        U.h("p", { style: { fontSize: "16px", fontWeight: 600, margin: "4px 0 16px" } }, msg),
+        U.h("div.form-actions", { style: { marginTop: 0 } },
+          U.h("button.btn.ghost", { type: "button", onclick: () => finish(false) }, cancel),
+          U.h(`button.btn${danger ? ".danger-solid" : ""}`, { type: "button", onclick: () => finish(true) }, ok))));
+      // closing by tapping the backdrop counts as cancel
+      const bg = document.querySelectorAll(".sheet-bg");
+      const last = bg[bg.length - 1];
+      if (last) last.addEventListener("click", (e) => { if (e.target === last) { done = true; resolve(false); } });
+    });
+  };
+  U.alert = function (msg) { return U.ask(msg, { ok: "확인", cancel: "닫기" }); };
+  U.confirm = (msg) => U.ask(msg);
 
   U.copy = async function (text) {
     try { await navigator.clipboard.writeText(text); U.toast("복사했습니다"); }
-    catch { window.prompt("길게 눌러 복사하세요", text); }
+    catch { U.sheet("길게 눌러 복사하세요", U.h("div.code", { style: { userSelect: "all", maxHeight: "50vh" } }, text)); }
   };
 
   // Resize an image file to a JPEG blob.

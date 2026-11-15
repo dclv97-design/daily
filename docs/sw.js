@@ -1,8 +1,8 @@
 /* Offline shell + web push. Bump VERSION when app files change. */
-const VERSION = "v1";
+const VERSION = "v8";
 const SHELL = [
   "./", "index.html", "app.css", "manifest.webmanifest",
-  "js/util.js", "js/crypto.js", "js/stocks.js", "js/note.js", "js/main.js",
+  "js/util.js", "js/crypto.js", "js/stocks.js", "js/vs-list.js", "js/note.js", "js/main.js",
   "icons/icon.svg", "icons/icon-192.png", "icons/apple-touch-icon.png",
 ];
 
@@ -41,7 +41,7 @@ self.addEventListener("fetch", (e) => {
 });
 
 self.addEventListener("push", (e) => {
-  let d = { title: "데일리", body: "새 분석이 도착했습니다", url: "./#/stocks" };
+  let d = { title: "BARMS", body: "새 분석이 도착했습니다", url: "./#/stocks" };
   try { d = { ...d, ...e.data.json() }; } catch { /* plain text */ }
   e.waitUntil(self.registration.showNotification(d.title, { body: d.body, icon: "icons/icon-192.png", badge: "icons/icon-192.png", data: { url: d.url } }));
 });

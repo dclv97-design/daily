@@ -1,7 +1,7 @@
 {
-  "name": "데일리",
-  "short_name": "데일리",
-  "description": "주식 분석과 마이 노트",
+  "name": "BARMS",
+  "short_name": "BARMS",
+  "description": "BARMS 주식 분석과 단순 메모",
   "lang": "ko",
   "start_url": "./",
   "scope": "./",

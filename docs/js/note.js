@@ -1,196 +1,297 @@
-/* My Note: a private journal built around five habits —
-   missed words, pre-conversation prep, behaviour experiments, judgement scoring, the "good" album —
-   plus a page for defining yourself. Everything stays in this device's IndexedDB. */
+/* 단순 메모: Thinks / Note / To-do / Judge, 좋은 오늘 / 비선호, 스토리, VS.
+   Everything stays in this device's IndexedDB. */
 (function () {
   const { h, icon } = U;
 
   const TABS = [
     { id: "today", label: "오늘", icon: "today", href: "#/note" },
-    { id: "log", label: "기록", icon: "pen", href: "#/note/log" },
-    { id: "judge", label: "판단", icon: "target", href: "#/note/judge" },
-    { id: "like", label: "좋음", icon: "heart", href: "#/note/like" },
-    { id: "me", label: "나", icon: "person", href: "#/note/me" },
+    { id: "memo", label: "메모", icon: "pen", href: "#/note/memo" },
+    { id: "pref", label: "선호", icon: "heart", href: "#/note/pref" },
+    { id: "story", label: "스토리", icon: "book", href: "#/note/story" },
+    { id: "vs", label: "VS", icon: "vs", href: "#/note/vs" },
   ];
 
-  const DEFAULT_BUFFERS = ["잠깐, 정리해서 말할게.", "내가 이해한 건 ~인데, 맞아?", "생각해보고 다시 말해줄게."];
+  const MEMO_SEGS = ["note", "todo", "thinks", "judge"];
+  const MEALS = ["아침", "점심", "저녁"];
+  const PEOPLE = ["혼자", "가족", "친구", "동료", "연인"];
+  const PREF_SEGS = ["good", "dislike"];
+  const DISLIKE_LINE = "대충 알고 좋아하고, 다 알고 싫어하자";
 
   const TYPES = {
-    missed: {
-      label: "했어야 할 말",
-      desc: "대화가 끝나고 '아, 이 말 했어야 했는데' 싶을 때",
-      title: (e) => e.should,
-      detail: (e) => (e.said ? `실제로는: ${e.said}` : e.who || ""),
+    thinks: {
+      label: "Thinks", icon: "bulb",
+      title: (e) => firstLine(e.content),
+      detail: (e) => restLines(e.content),
+      fields: [{ k: "content", label: "생각", type: "textarea", req: true, tall: true }],
+    },
+    note: {
+      label: "Note", icon: "chat",
+      title: (e) => [e.who, e.where].filter(Boolean).join(" · "),
+      detail: (e) => (e.keywords || []).filter(Boolean).map((k) => `#${k}`).join(" "),
       fields: [
-        { k: "who", label: "어떤 자리였나", type: "text", ph: "예: 친구와 저녁, 팀장 면담" },
-        { k: "said", label: "실제로 한 말", type: "textarea", ph: "예: 나 이제 집에 갈래" },
-        { k: "should", label: "했어야 했던 말", type: "textarea", ph: "예: 나 좀 더 놀고 싶은데, 너 괜찮아?", req: true },
-        { k: "why", label: "왜 못 했을까", type: "multi", options: ["상대가 원할 답을 먼저 냄", "즉흥적으로 말함", "거절이 두려움", "입장이 정리 안 됨", "분위기에 맞춤", "위계 때문에", "기타"] },
-        { k: "note", label: "메모", type: "textarea", ph: "선택" },
+        { k: "who", label: "누구와", type: "text", req: true },
+        { k: "when", label: "언제", type: "date", def: () => U.today() },
+        { k: "where", label: "어디서", type: "text" },
+        { k: "keywords", label: "키워드 3개", type: "keywords", req: true },
+        { k: "memo", label: "메모", type: "textarea" },
       ],
     },
-    prep: {
-      label: "대화 장전",
-      desc: "중요한 대화 전에 두 줄만 적어 가기",
-      title: (e) => e.with,
-      detail: (e) => `결론: ${e.conclusion || "-"}`,
+    todo: {
+      label: "To-do", icon: "check",
+      title: (e) => e.title,
+      detail: (e) => e.memo || "",
       fields: [
-        { k: "with", label: "누구와, 어떤 자리", type: "text", ph: "예: 상무님 면담, 친구와 진지한 얘기", req: true },
-        { k: "when", label: "날짜", type: "date", def: () => U.today() },
-        { k: "conclusion", label: "내 결론은", type: "textarea", ph: "이 대화에서 내 입장 한 줄", req: true },
-        { k: "mustSay", label: "꼭 해야 할 말 1개", type: "textarea", ph: "이것만은 꺼내고 나온다", req: true },
-        { k: "buffer", label: "막히면 쓸 버퍼 문장", type: "buffer" },
-        { k: "outcome", label: "꼭 할 말을 했나", type: "single", options: ["했다", "일부만", "못했다"], after: true },
-        { k: "review", label: "돌아보기", type: "textarea", ph: "상대 반응, 다음엔 어떻게", after: true },
-      ],
-    },
-    exp: {
-      label: "행동 실험",
-      desc: "상대 마음을 추측하지 말고 직접 확인해 보기",
-      title: (e) => e.action,
-      detail: (e) => `예상: ${e.expect || "-"}`,
-      fields: [
-        { k: "action", label: "해볼 말이나 행동", type: "textarea", ph: "예: 한 시간만 더 있다 갈래? 피곤하면 말고.", req: true },
-        { k: "expect", label: "내 예상 반응", type: "textarea", ph: "예: 피곤하다고 할 것 같다", req: true },
-        { k: "actual", label: "실제 반응", type: "textarea", after: true },
-        { k: "matched", label: "예상과 비교하면", type: "single", options: ["예상대로", "달랐다"], after: true },
-        { k: "learned", label: "알게 된 것", type: "textarea", after: true },
+        { k: "kind", label: "종류", type: "single", options: ["스케줄", "약속", "task"], def: () => "task" },
+        { k: "title", label: "할 일", type: "text", req: true },
+        { k: "due", label: "날짜", type: "date" },
+        { k: "time", label: "시간", type: "time" },
+        { k: "memo", label: "메모", type: "textarea" },
       ],
     },
     judge: {
-      label: "판단 노트",
-      desc: "묻기 전에 '내 생각은 ○○, 이유는 ○○'부터",
-      title: (e) => e.question,
-      detail: (e) => `내 판단: ${e.myCall || "-"}`,
+      label: "Judge", icon: "scale",
+      title: (e) => e.about,
+      detail: (e) => e.flaw || "",
       fields: [
-        { k: "question", label: "무엇을 판단하나", type: "text", ph: "예: 이 지원자 최종 합격할까", req: true },
-        { k: "category", label: "분류", type: "single", options: ["일상", "업무", "주식", "관계", "커리어", "기타"], def: () => "일상" },
-        { k: "myCall", label: "내 판단은", type: "text", ph: "한 줄로", req: true },
-        { k: "reason", label: "이유는", type: "textarea", req: true },
-        { k: "confidence", label: "확신", type: "range", min: 50, max: 100, step: 10, def: () => 70, unit: "%" },
-        { k: "due", label: "채점할 날", type: "date", def: () => U.addDays(U.today(), 7) },
-        { k: "result", label: "결과", type: "single", options: ["맞음", "부분", "틀림"], after: true },
-        { k: "reflection", label: "채점 메모", type: "textarea", ph: "왜 맞았나/틀렸나", after: true },
+        { k: "about", label: "어떤 대화/일", type: "text", req: true },
+        { k: "noteRef", label: "관련 Note", type: "noteRef" },
+        { k: "flaw", label: "아쉬웠던 점", type: "textarea", req: true },
+        { k: "thinking", label: "생각 과정", type: "textarea", tall: true },
+        { k: "next", label: "다음엔", type: "textarea" },
       ],
     },
-    like: {
-      label: "좋음",
-      desc: "끌리는 것 하나와 이유 한 줄. 판단은 하지 않기",
-      title: (e) => e.why,
-      detail: (e) => (e.tags || []).join(" · "),
+    good: {
+      label: "좋은 오늘", icon: "heart",
+      title: (e) => e.what,
+      detail: (e) => e.why || "",
       fields: [
-        { k: "photo", label: "사진", type: "photo" },
-        { k: "why", label: "왜 끌렸나 (한 줄)", type: "text", ph: "판단하지 말고 느낀 그대로", req: true },
-        { k: "tags", label: "종류", type: "multi", options: ["색", "공간", "옷", "사진", "폰트", "물건", "음악", "사람", "기타"] },
+        { k: "media", label: "사진/영상", type: "media" },
+        { k: "what", label: "좋은 것", type: "text", req: true },
+        { k: "why", label: "이유", type: "text" },
         { k: "date", label: "날짜", type: "date", def: () => U.today() },
       ],
     },
+    dislike: {
+      label: "비선호", icon: "heart",
+      title: (e) => e.what,
+      detail: (e) => e.why || "",
+      fields: [
+        { k: "what", label: "싫은 것", type: "text", req: true },
+        { k: "why", label: "이유", type: "textarea", req: true },
+      ],
+    },
+    story: {
+      label: "스토리", icon: "book",
+      title: (e) => e.title,
+      detail: (e) => e.story || "",
+      fields: [
+        { k: "title", label: "제목", type: "text", req: true },
+        { k: "story", label: "내용", type: "textarea", req: true, tall: true },
+        { k: "when", label: "언제", type: "date", def: () => U.today() },
+        { k: "who", label: "누구와", type: "text" },
+      ],
+    },
+    vs: {
+      label: "VS", icon: "vs",
+      title: (e) => `${e.a} VS ${e.b}`,
+      detail: () => "",
+      fields: [{ k: "pair", label: "", type: "vs" }, { k: "memo", label: "메모", type: "textarea" }],
+    },
   };
+  TYPES.meal = {
+    label: "식사", icon: "today",
+    title: (e) => `${e.slot} · ${e.menu || (e.media ? "사진" : "")}`,
+    detail: (e) => (e.with || []).join(", "),
+    fields: [
+      { k: "slot", label: "끼니", type: "single", options: MEALS, req: true },
+      { k: "mode", label: "기록 방식", type: "single", options: ["텍스트", "사진"], def: () => "텍스트", rerender: true },
+      { k: "menu", label: "메뉴", type: "text", req: true, showIf: (e) => e.mode !== "사진" },
+      { k: "media", label: "사진", type: "media", photoOnly: true, showIf: (e) => e.mode === "사진" },
+      { k: "with", label: "누구랑", type: "people" },
+      { k: "date", label: "날짜", type: "date", def: () => U.today() },
+    ],
+  };
+  TYPES.episode = TYPES.story; // older backups
 
-  /* ---------- storage helpers ---------- */
+  function firstLine(s) { return (s || "").trim().split("\n")[0].slice(0, 80); }
+  function restLines(s) { return (s || "").trim().split("\n").slice(1).join(" ").slice(0, 160); }
+
   const listOf = (type) => U.store.byType(type);
-  const getBuffers = async () => (await U.store.kvGet("buffers")) || DEFAULT_BUFFERS.slice();
-  const getIdentity = async () => (await U.store.kvGet("identity")) || { choice: "", intolerable: "", gap: "", statement: "", history: [] };
-  const getValues = async () => (await U.store.kvGet("values")) || [];
-  const photoUrls = new Map();
-  async function thumbUrl(photoId) {
-    if (!photoId) return null;
-    if (photoUrls.has(photoId)) return photoUrls.get(photoId);
-    const b = (await U.store.blobGet(photoId + ":t")) || (await U.store.blobGet(photoId));
+
+  /* ---------- media ---------- */
+  const mediaUrls = new Map();
+  async function mediaUrl(id, thumb) {
+    if (!id) return null;
+    const key = thumb ? id + ":t" : id;
+    if (mediaUrls.has(key)) return mediaUrls.get(key);
+    const b = await U.store.blobGet(key);
     if (!b) return null;
     const url = URL.createObjectURL(b);
-    photoUrls.set(photoId, url);
+    mediaUrls.set(key, url);
     return url;
   }
+  async function deleteMedia(id) {
+    if (!id) return;
+    await U.store.blobDel(id);
+    await U.store.blobDel(id + ":t");
+    mediaUrls.delete(id);
+    mediaUrls.delete(id + ":t");
+  }
+  function videoThumb(file) {
+    return new Promise((resolve) => {
+      const v = document.createElement("video");
+      const url = URL.createObjectURL(file);
+      let done = false;
+      const finish = (b) => { if (done) return; done = true; URL.revokeObjectURL(url); resolve(b); };
+      v.muted = true;
+      v.playsInline = true;
+      v.preload = "metadata";
+      v.src = url;
+      v.onloadeddata = () => { try { v.currentTime = Math.min(0.2, (v.duration || 1) / 2); } catch { finish(null); } };
+      v.onseeked = () => {
+        const r = Math.min(1, 420 / Math.max(v.videoWidth, v.videoHeight || 1));
+        const c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(v.videoWidth * r));
+        c.height = Math.max(1, Math.round(v.videoHeight * r));
+        try { c.getContext("2d").drawImage(v, 0, 0, c.width, c.height); c.toBlob((b) => finish(b), "image/jpeg", 0.8); }
+        catch { finish(null); }
+      };
+      v.onerror = () => finish(null);
+      setTimeout(() => finish(null), 6000);
+    });
+  }
+  const MAX_VIDEO = 200 * 1024 * 1024;
 
   /* ---------- generic form ---------- */
-  async function formView(type, existing) {
+  async function formView(type, existing, opts = {}) {
     const T = TYPES[type];
     const isNew = !existing;
     const e = existing ? { ...existing } : { id: U.uid(), type, createdAt: new Date().toISOString() };
     if (isNew) T.fields.forEach((f) => { if (f.def) e[f.k] = f.def(); });
-    const buffers = await getBuffers();
-    let pendingPhoto = null;
+    if (isNew && opts.preset) Object.assign(e, opts.preset);
+    let pending = null;
+    let pendingUrl = null;
+    const notes = T.fields.some((f) => f.type === "noteRef") ? await listOf("note") : [];
+    let people = [];
+    if (T.fields.some((f) => f.type === "people")) {
+      const used = new Set();
+      (await listOf("meal")).forEach((m) => (m.with || []).forEach((p) => used.add(p)));
+      people = [...new Set([...PEOPLE, ...used])];
+    }
 
     const form = h("form", { onsubmit: (ev) => { ev.preventDefault(); save(); } });
-    const errBox = h("p.small", { style: { color: "var(--up)", minHeight: "1px" } });
+    const errBox = h("p.small", { style: { color: "var(--up)" } });
 
     const renderField = (f) => {
       const wrap = h("div.field");
-      wrap.appendChild(h("div.label", f.label + (f.req ? "" : "")));
+      if (f.label) wrap.appendChild(h("div.label", f.label));
       if (f.type === "text") {
-        wrap.appendChild(h("input.input", { value: e[f.k] || "", placeholder: f.ph || "", oninput: (ev) => (e[f.k] = ev.target.value) }));
+        wrap.appendChild(h("input.input", { value: e[f.k] || "", oninput: (ev) => (e[f.k] = ev.target.value) }));
       } else if (f.type === "textarea") {
-        wrap.appendChild(h("textarea.input", { value: e[f.k] || "", placeholder: f.ph || "", oninput: (ev) => (e[f.k] = ev.target.value) }));
-      } else if (f.type === "date") {
-        wrap.appendChild(h("input.input", { type: "date", value: e[f.k] || "", onchange: (ev) => (e[f.k] = ev.target.value) }));
-      } else if (f.type === "single" || f.type === "multi") {
+        wrap.appendChild(h("textarea.input", { value: e[f.k] || "", style: f.tall ? { minHeight: "160px" } : null, oninput: (ev) => (e[f.k] = ev.target.value) }));
+      } else if (f.type === "date" || f.type === "time") {
+        wrap.appendChild(h("input.input", { type: f.type, value: e[f.k] || "", onchange: (ev) => (e[f.k] = ev.target.value) }));
+      } else if (f.type === "single") {
         const pills = h("div.pills");
         const draw = () => {
           pills.innerHTML = "";
-          f.options.forEach((o) => {
-            const on = f.type === "multi" ? (e[f.k] || []).includes(o) : e[f.k] === o;
+          f.options.forEach((o) => pills.appendChild(h(`button.pill${e[f.k] === o ? ".on" : ""}`, { type: "button", onclick: () => { e[f.k] = o; if (f.rerender) renderAll(); else draw(); } }, o)));
+        };
+        draw();
+        wrap.appendChild(pills);
+      } else if (f.type === "people") {
+        const pills = h("div.pills");
+        const draw = () => {
+          pills.innerHTML = "";
+          people.forEach((o) => {
+            const on = (e[f.k] || []).includes(o);
             pills.appendChild(h(`button.pill${on ? ".on" : ""}`, {
               type: "button",
               onclick: () => {
-                if (f.type === "multi") {
-                  const s = new Set(e[f.k] || []);
-                  s.has(o) ? s.delete(o) : s.add(o);
-                  e[f.k] = [...s];
-                } else e[f.k] = e[f.k] === o ? null : o;
+                let s = new Set(e[f.k] || []);
+                if (o === "혼자") s = s.has(o) ? new Set() : new Set(["혼자"]);
+                else { s.delete("혼자"); s.has(o) ? s.delete(o) : s.add(o); }
+                e[f.k] = [...s];
                 draw();
               },
             }, o));
           });
         };
         draw();
-        wrap.appendChild(pills);
-      } else if (f.type === "range") {
-        const out = h("b", `${e[f.k]}${f.unit || ""}`);
-        wrap.firstChild.append(" ", out);
-        wrap.appendChild(h("input", { type: "range", min: f.min, max: f.max, step: f.step, value: e[f.k], oninput: (ev) => { e[f.k] = +ev.target.value; out.textContent = `${e[f.k]}${f.unit || ""}`; } }));
-        wrap.appendChild(h("div.hint", "나중에 채점하면 확신과 실제 적중률을 비교해 볼 수 있습니다."));
-      } else if (f.type === "buffer") {
-        const pills = h("div.pills");
-        const draw = () => {
-          pills.innerHTML = "";
-          buffers.forEach((b) => pills.appendChild(h(`button.pill${e.buffer === b ? ".on" : ""}`, { type: "button", onclick: () => { e.buffer = e.buffer === b ? null : b; draw(); } }, b)));
+        const custom = h("input.input.grow", { placeholder: "이름 추가" });
+        const addCustom = () => {
+          const v = custom.value.trim();
+          if (!v) return;
+          if (!people.includes(v)) people.push(v);
+          const s = new Set(e[f.k] || []);
+          s.delete("혼자");
+          s.add(v);
+          e[f.k] = [...s];
+          custom.value = "";
+          draw();
         };
-        draw();
-        wrap.append(pills, h("div.hint", "버퍼 문장은 '나' 탭에서 바꿀 수 있습니다."));
-      } else if (f.type === "photo") {
-        const box = h("label.photo-pick");
-        const showImg = (url) => { box.innerHTML = ""; box.append(h("img", { src: url, alt: "" }), fileInput); };
+        custom.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); addCustom(); } });
+        wrap.append(pills, h("div.row", { style: { marginTop: "8px" } }, custom, h("button.btn.ghost.sm", { type: "button", onclick: addCustom }, "추가")));
+      } else if (f.type === "keywords") {
+        const kw = (e.keywords = (e.keywords || []).concat(["", "", ""]).slice(0, 3));
+        wrap.appendChild(h("div.row", kw.map((v, i) => h("input.input.grow", { value: v, oninput: (ev) => (kw[i] = ev.target.value) }))));
+      } else if (f.type === "noteRef") {
+        wrap.appendChild(h("select.input", { onchange: (ev) => (e.noteRef = ev.target.value || null) },
+          h("option", { value: "" }, "선택 안 함"),
+          notes.map((n) => h("option", { value: n.id, selected: e.noteRef === n.id }, `${n.when || n.date} · ${n.who}${n.where ? ` · ${n.where}` : ""}`))));
+      } else if (f.type === "vs") {
+        const side = (k) => h("label.vs-side", { class: e.pick === k ? "on" : "" },
+          h("input", { type: "checkbox", checked: e.pick === k, onchange: (ev) => { e.pick = ev.target.checked ? k : null; redraw(); } }),
+          h("input.input", { value: e[k] || "", oninput: (ev) => (e[k] = ev.target.value) }));
+        const box = h("div.vs-form");
+        const redraw = () => { box.innerHTML = ""; box.append(side("a"), h("div.vs-mid", "VS"), side("b")); };
+        redraw();
+        wrap.appendChild(box);
+      } else if (f.type === "media") {
+        let hasMedia = false;
+        const box = h("div.photo-pick", { onclick: () => { if (!hasMedia) fileInput.click(); } });
+        const change = h("button.link-btn.small", { type: "button", style: { display: "none" }, onclick: () => fileInput.click() }, "바꾸기");
         const fileInput = h("input", {
-          type: "file", accept: "image/*",
+          type: "file", accept: f.photoOnly ? "image/*" : "image/*,video/*", style: { display: "none" },
           onchange: async (ev) => {
             const file = ev.target.files[0];
             if (!file) return;
             try {
-              pendingPhoto = { full: await U.resizeImage(file, 1400), thumb: await U.resizeImage(file, 420) };
-              showImg(URL.createObjectURL(pendingPhoto.thumb));
+              if (file.type.startsWith("video/")) {
+                if (file.size > MAX_VIDEO) { U.toast("영상은 200MB 이하만 저장할 수 있습니다"); return; }
+                pending = { kind: "video", full: file, thumb: await videoThumb(file) };
+                pendingUrl = URL.createObjectURL(file);
+                show("video", pendingUrl);
+              } else {
+                pending = { kind: "image", full: await U.resizeImage(file, 1600), thumb: await U.resizeImage(file, 420) };
+                pendingUrl = URL.createObjectURL(pending.thumb);
+                show("image", pendingUrl);
+              }
             } catch (err) { U.toast(err.message); }
           },
         });
-        box.append(h("span.muted.small", "탭해서 사진 고르기 (선택)"), fileInput);
-        if (e.photo) thumbUrl(e.photo).then((u) => u && showImg(u));
-        wrap.appendChild(box);
+        const show = (kind, url) => {
+          hasMedia = true;
+          box.innerHTML = "";
+          box.appendChild(kind === "video" ? h("video", { src: url, controls: true, playsInline: true, style: { width: "100%", maxHeight: "360px", display: "block" } }) : h("img", { src: url, alt: "" }));
+          change.style.display = "";
+        };
+        box.appendChild(h("span.muted.small", "사진 또는 영상"));
+        wrap.append(box, fileInput, change);
+        if (pending) show(pending.kind, pendingUrl);
+        else if (e.media) mediaUrl(e.media, e.mediaType !== "video").then((u) => u && show(e.mediaType || "image", u));
       }
       return wrap;
     };
 
-    const now = T.fields.filter((f) => !f.after);
-    const later = T.fields.filter((f) => f.after);
-    now.forEach((f) => form.appendChild(renderField(f)));
-    if (later.length) {
-      if (isNew) {
-        const det = h("details", h("summary.small.muted", { style: { margin: "4px 0 14px", cursor: "pointer" } }, "나중에 채울 항목 보기"));
-        later.forEach((f) => det.appendChild(renderField(f)));
-        form.appendChild(det);
-      } else {
-        form.appendChild(h("div.divider"));
-        form.appendChild(h("div.section-title", { style: { marginTop: 0 } }, "나중에 채우기"));
-        later.forEach((f) => form.appendChild(renderField(f)));
-      }
+    const fieldsBox = h("div");
+    const visible = () => T.fields.filter((f) => !f.showIf || f.showIf(e));
+    function renderAll() { fieldsBox.innerHTML = ""; visible().forEach((f) => fieldsBox.appendChild(renderField(f))); }
+    renderAll();
+    form.appendChild(fieldsBox);
+    if (type === "todo" && !isNew) {
+      form.appendChild(h("label.row.field", { style: { gap: "8px" } },
+        h("input", { type: "checkbox", checked: !!e.done, onchange: (ev) => (e.done = ev.target.checked), style: { width: "20px", height: "20px", accentColor: "var(--accent)" } }), "완료"));
     }
     form.append(errBox,
       h("div.form-actions",
@@ -198,294 +299,441 @@
         h("button.btn", { type: "submit" }, "저장")));
 
     async function save() {
-      const miss = T.fields.find((f) => f.req && !String(e[f.k] || "").trim());
-      if (miss) { errBox.textContent = `'${miss.label}'을(를) 채워 주세요.`; return; }
-      if (pendingPhoto) {
-        if (e.photo) { await U.store.blobDel(e.photo); await U.store.blobDel(e.photo + ":t"); photoUrls.delete(e.photo); }
-        e.photo = U.uid();
-        await U.store.blobSet(e.photo, pendingPhoto.full);
-        await U.store.blobSet(e.photo + ":t", pendingPhoto.thumb);
+      if (type === "meal" && e.mode === "사진" && !pending && !e.media) { errBox.textContent = "사진을 골라 주세요."; return; }
+      let miss = visible().find((f) => f.req && (f.type === "keywords" ? !(e.keywords || []).some((k) => k.trim()) : !String(e[f.k] || "").trim()));
+      if (type === "vs" && (!String(e.a || "").trim() || !String(e.b || "").trim())) miss = { label: "양쪽" };
+      if (miss) { errBox.textContent = `${miss.label}을(를) 입력하세요.`; return; }
+      if (pending) {
+        await deleteMedia(e.media);
+        e.media = U.uid();
+        e.mediaType = pending.kind;
+        await U.store.blobSet(e.media, pending.full);
+        if (pending.thumb) await U.store.blobSet(e.media + ":t", pending.thumb);
       }
-      e.date = e.date || e.when || e.createdAt.slice(0, 10);
+      if (e.keywords) e.keywords = e.keywords.map((k) => k.trim());
+      e.date = e.date || e.when || e.due || e.createdAt.slice(0, 10);
       e.updatedAt = new Date().toISOString();
       await U.store.put(e);
-      U.toast("저장했습니다");
-      location.hash = backFor(type);
+      U.toast("저장됨");
+      if (opts.onSaved) opts.onSaved(); else location.hash = backFor(type);
     }
     async function remove() {
-      if (!U.confirm("이 기록을 삭제할까요? 되돌릴 수 없습니다.")) return;
-      if (e.photo) { await U.store.blobDel(e.photo); await U.store.blobDel(e.photo + ":t"); }
+      if (!(await U.ask("삭제할까요?", { ok: "삭제", danger: true }))) return;
+      await deleteMedia(e.media);
       await U.store.del(e.id);
-      U.toast("삭제했습니다");
+      U.toast("삭제됨");
       location.hash = backFor(type);
     }
-
-    return h("div", h("p.small.muted", { style: { margin: "0 4px 14px" } }, T.desc), form);
+    return form;
   }
 
-  /* ---------- list item ---------- */
+  /* ---------- list items ---------- */
   function item(e) {
     const T = TYPES[e.type];
-    const chips = [];
-    if (e.type === "prep") chips.push(e.outcome ? h(`span.chip${e.outcome === "했다" ? ".good" : e.outcome === "못했다" ? ".bad" : ".warn"}`, e.outcome) : h("span.chip.accent", "대화 전"));
-    if (e.type === "exp") chips.push(e.matched ? h(`span.chip${e.matched === "예상대로" ? "" : ".warn"}`, e.matched) : h("span.chip.accent", "시도 전"));
-    if (e.type === "judge") {
-      if (e.result) chips.push(h(`span.chip${e.result === "맞음" ? ".good" : e.result === "틀림" ? ".bad" : ".warn"}`, e.result));
-      else if (e.due && e.due <= U.today()) chips.push(h("span.chip.accent", "채점할 차례"));
-      else chips.push(h("span.chip", `채점 ${e.due ? e.due.slice(5).replace("-", "/") : "-"}`));
-      chips.push(h("span.chip", `${e.category || "기타"} · 확신 ${e.confidence}%`));
-    }
-    if (e.type === "missed") (e.why || []).slice(0, 2).forEach((w) => chips.push(h("span.chip", w)));
     return h("button.list-item", { onclick: () => (location.hash = `#/note/edit/${e.id}`) },
-      h("div.t", T.title(e) || "(제목 없음)"),
+      h("div.t", T.title(e) || "(내용 없음)"),
       T.detail(e) ? h("div.d", T.detail(e)) : null,
-      h("div.m", h("span", U.dateLabel(e.date)), ...chips));
+      h("div.m", h("span", U.dateLabel(e.date))));
   }
 
-  function bars(counts, total) {
-    const max = Math.max(1, ...Object.values(counts));
-    return h("div", Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) =>
-      h("div.hbar", h("span.lab", k), h("span.track", h("span.fill", { style: { width: `${(v / max) * 100}%`, display: "block" } })), h("span.val", total ? `${v}` : v))));
+  function todoRow(e, rerender) {
+    const overdue = !e.done && e.due && e.due < U.today();
+    return h("div.list-item.row", { style: { cursor: "default" } },
+      h("input", {
+        type: "checkbox", checked: !!e.done, "aria-label": "완료",
+        style: { width: "22px", height: "22px", accentColor: "var(--accent)", flex: "none" },
+        onchange: async (ev) => { e.done = ev.target.checked; e.updatedAt = new Date().toISOString(); await U.store.put(e); rerender(); },
+      }),
+      h("button.grow", { style: { border: 0, background: "none", textAlign: "left", padding: 0, cursor: "pointer" }, onclick: () => (location.hash = `#/note/edit/${e.id}`) },
+        h("div.t", { style: e.done ? { textDecoration: "line-through", color: "var(--ink-3)" } : null }, e.title),
+        h("div.m", h("span.chip", e.kind || "task"),
+          e.due ? h(`span${overdue ? ".up" : ""}`, `${U.dateLabel(e.due)}${e.time ? ` ${e.time}` : ""}`) : e.time ? h("span", e.time) : null)));
   }
 
-  const fab = (type) => h("button.fab", { "aria-label": "새 기록", onclick: () => (location.hash = `#/note/new/${type}`) }, icon("plus"));
+  function vsRow(e, rerender) {
+    const side = (k) => h(`button.vs-pick${e.pick === k ? ".on" : ""}`, {
+      onclick: async () => { e.pick = e.pick === k ? null : k; e.updatedAt = new Date().toISOString(); await U.store.put(e); rerender(); },
+    }, h("span.box", e.pick === k ? "✓" : ""), h("span", e[k]));
+    const memo = h("textarea.input.vs-memo", {
+      value: e.memo || "", placeholder: "메모", rows: 1,
+      onchange: async (ev) => { e.memo = ev.target.value; e.updatedAt = new Date().toISOString(); await U.store.put(e); },
+    });
+    return h("div.card.vs-card",
+      h("div.vs-row",
+        side("a"), h("div.vs-mid", "VS"), side("b"),
+        h("button.icon-btn.vs-edit", { "aria-label": "편집", onclick: () => (location.hash = `#/note/edit/${e.id}`) }, icon("pen"))),
+      memo);
+  }
+
+  async function addRandomVs() {
+    const list = window.VS_LIST || [];
+    const existing = new Set((await listOf("vs")).map((v) => `${v.a}|${v.b}`));
+    const pool = list.filter((x) => !existing.has(x));
+    if (!pool.length) { U.toast("모두 추가했습니다"); return; }
+    const [a, b] = pool[Math.floor(Math.random() * pool.length)].split("|");
+    const now = new Date().toISOString();
+    await U.store.put({ id: U.uid(), type: "vs", a, b, pick: null, memo: "", createdAt: now, updatedAt: now, date: U.today() });
+  }
+
+  const fab = (type) => h("button.fab", { "aria-label": "새로 쓰기", onclick: () => (location.hash = `#/note/new/${type}`) }, icon("plus"));
+  const seg = (list, cur, base, withIcon) => h("div.seg", list.map((s) =>
+    h(`button${s === cur ? ".on" : ""}`, { onclick: () => (location.hash = `${base}/${s}`) },
+      withIcon ? h("span.seg-ic", icon(TYPES[s].icon)) : null, TYPES[s].label)));
+
+  async function mediaTile(e) {
+    const btn = h("button", { onclick: () => (location.hash = `#/note/edit/${e.id}`), "aria-label": e.what });
+    const url = e.media ? await mediaUrl(e.media, true) : null;
+    btn.appendChild(url ? h("img", { src: url, alt: "", loading: "lazy" }) : h("span.noimg", e.what));
+    if (e.mediaType === "video") btn.appendChild(h("span.play", "▶"));
+    return btn;
+  }
 
   /* ---------- views ---------- */
   async function todayView() {
-    const [judges, preps, likes, missed, exps, identity, buffers] = await Promise.all([
-      listOf("judge"), listOf("prep"), listOf("like"), listOf("missed"), listOf("exp"), getIdentity(), getBuffers(),
-    ]);
     const today = U.today();
-    const due = judges.filter((j) => !j.result && j.due && j.due <= today);
-    const upcoming = preps.filter((p) => !p.outcome).sort((a, b) => (a.when || "").localeCompare(b.when || ""));
-    const likedToday = likes.some((l) => l.date === today);
-    const streak = likeStreak(likes);
-    const month = today.slice(0, 7);
-    const graded = judges.filter((j) => j.result);
-    const acc = graded.length ? graded.reduce((a, j) => a + (j.result === "맞음" ? 1 : j.result === "부분" ? 0.5 : 0), 0) / graded.length : null;
-    const prepDone = preps.filter((p) => p.outcome);
-    const said = prepDone.length ? prepDone.filter((p) => p.outcome === "했다").length / prepDone.length : null;
-
+    const [goods, todos, meals] = await Promise.all([listOf("good"), listOf("todo"), listOf("meal")]);
     const el = h("div");
-    el.appendChild(h("div.card",
-      h("h3", "결정하기 전에 한 줄"),
-      h("p.small.muted", "누군가에게 묻기 전에 '내 생각은 ○○, 이유는 ○○'부터 적어 두세요. 나중에 채점하면 판단이 앞당겨집니다."),
-      h("button.btn.soft.block", { style: { marginTop: "12px" }, onclick: () => (location.hash = "#/note/new/judge") }, "내 판단 먼저 적기")));
 
-    if (due.length) el.appendChild(h("div.card",
-      h("div.h-row", h("h3", "채점할 차례"), h("span.chip.accent", `${due.length}건`)),
-      due.slice(0, 3).map((j) => h("button.list-item", { style: { boxShadow: "none", background: "var(--surface-2)", marginBottom: "6px" }, onclick: () => (location.hash = `#/note/edit/${j.id}`) },
-        h("div.t", j.question), h("div.d", `내 판단: ${j.myCall}`)))));
+    // 식사
+    const todayMeals = meals.filter((m) => m.date === today);
+    const mealCard = h("div.card", h("div.h-row", h("h3", "식사"), h("button.link-btn.small", { onclick: () => (location.hash = "#/note/meals") }, "기록 보기")));
+    const slots = h("div.meal-slots");
+    for (const s of MEALS) {
+      const mine = todayMeals.filter((m) => m.slot === s);
+      const btn = h(`button.meal-slot${mine.length ? ".done" : ""}`, { onclick: () => (location.hash = mine.length === 1 ? `#/note/edit/${mine[0].id}` : `#/note/new/meal/${s}`) });
+      const photo = mine.find((m) => m.media);
+      const url = photo ? await mediaUrl(photo.media, true) : null;
+      if (url) btn.appendChild(h("img", { src: url, alt: "" }));
+      btn.append(h("b", s), h("span", mine.length ? mine.map((m) => m.menu || "사진").join(", ") : "+"));
+      if (mine.length) btn.appendChild(h("span.with", (mine[0].with || []).join(", ")));
+      slots.appendChild(btn);
+    }
+    mealCard.appendChild(slots);
+    el.appendChild(mealCard);
 
-    if (upcoming.length) el.appendChild(h("div.card",
-      h("h3", "장전해 둔 대화"),
-      upcoming.slice(0, 2).map((p) => h("button.list-item", { style: { boxShadow: "none", background: "var(--surface-2)", marginBottom: "6px" }, onclick: () => (location.hash = `#/note/edit/${p.id}`) },
-        h("div.t", `${p.with}${p.when ? ` · ${U.dateLabel(p.when)}` : ""}`),
-        h("div.d", `결론: ${p.conclusion}`), h("div.d", `꼭 할 말: ${p.mustSay}`)))));
+    const goodCard = h("div.card", h("h3", "좋은 오늘"));
+    for (const g of goods.filter((x) => x.date === today)) {
+      const row = h("button.list-item.row", { style: { boxShadow: "none", background: "var(--surface-2)", marginBottom: "6px" }, onclick: () => (location.hash = `#/note/edit/${g.id}`) });
+      const url = g.media ? await mediaUrl(g.media, true) : null;
+      if (url) row.appendChild(h("img", { src: url, alt: "", style: { width: "52px", height: "52px", objectFit: "cover", borderRadius: "10px", flex: "none" } }));
+      row.appendChild(h("div.grow", h("div.t", g.what), g.why ? h("div.d", g.why) : null));
+      goodCard.appendChild(row);
+    }
+    goodCard.appendChild(await formView("good", null, { onSaved: () => Note.route([]) }));
+    el.appendChild(goodCard);
 
-    el.appendChild(h("div.card",
-      h("div.h-row", h("h3", "오늘의 좋음"), h("span.small.muted", streak ? `${streak}일 연속` : "")),
-      likedToday ? h("p.small", "오늘 한 장 저장했습니다.") : h("p.small.muted", "끌리는 것 하나를 저장하고 이유 한 줄만 붙이세요."),
-      !likedToday ? h("button.btn.block", { style: { marginTop: "10px" }, onclick: () => (location.hash = "#/note/new/like") }, "좋음 저장하기") : null));
+    const open = todos.filter((t) => !t.done && (!t.due || t.due <= today)).sort((a, b) => (a.due || "9").localeCompare(b.due || "9") || (a.time || "").localeCompare(b.time || ""));
+    const todoBox = h("div");
+    const drawTodos = () => { todoBox.innerHTML = ""; open.filter((t) => !t.done).forEach((t) => todoBox.appendChild(todoRow(t, drawTodos))); };
+    drawTodos();
+    el.append(h("div.section-title", h("span", "오늘 할 일"), h("button.link-btn.small", { onclick: () => (location.hash = "#/note/new/todo") }, "+ 추가")), todoBox);
 
-    el.appendChild(h("div.section-title", "바로 기록하기"));
-    el.appendChild(h("div.quick",
-      ["missed", "prep", "exp", "judge"].map((t) => h("button", { onclick: () => (location.hash = `#/note/new/${t}`) }, h("b", TYPES[t].label), h("span", TYPES[t].desc)))));
-
-    el.appendChild(h("div.section-title", "이번 달"));
-    el.appendChild(h("div.kpis",
-      h("div.kpi", h("div.l", "했어야 할 말"), h("div.v", `${missed.filter((m) => m.date?.startsWith(month)).length}건`), h("div.s", "모일수록 진짜 생각이 보입니다")),
-      h("div.kpi", h("div.l", "판단 적중률"), h("div.v", acc == null ? "-" : U.pct0(acc)), h("div.s", `채점 ${graded.length}건`)),
-      h("div.kpi", h("div.l", "꼭 할 말 성공"), h("div.v", said == null ? "-" : U.pct0(said)), h("div.s", `장전 ${prepDone.length}회`)),
-      h("div.kpi", h("div.l", "행동 실험"), h("div.v", `${exps.filter((x) => x.matched).length}회`), h("div.s", `예상과 다름 ${exps.filter((x) => x.matched === "달랐다").length}회`))));
-
-    el.appendChild(h("div.card",
-      h("h3", "막힐 때 쓸 문장"),
-      h("div.stack", buffers.map((b) => h("div.quote.small", b)))));
-
-    if (identity.statement) el.appendChild(h("button.list-item", { onclick: () => (location.hash = "#/note/me") },
-      h("div.tiny.muted", "나는 이런 사람"), h("div.small", { style: { marginTop: "4px", lineHeight: 1.65 } }, identity.statement)));
+    el.append(h("div.section-title", "바로 쓰기"),
+      h("div.quick.icons", MEMO_SEGS.map((t) => h("button", { onclick: () => (location.hash = `#/note/new/${t}`) }, h("span.q-ic", icon(TYPES[t].icon)), h("b", TYPES[t].label)))));
     return el;
   }
 
-  function likeStreak(likes) {
-    const days = new Set(likes.map((l) => l.date));
-    let n = 0;
-    let d = U.today();
-    if (!days.has(d)) d = U.addDays(d, -1);
-    while (days.has(d)) { n++; d = U.addDays(d, -1); }
-    return n;
-  }
-
-  async function logView(seg) {
-    seg = TYPES[seg] && ["missed", "prep", "exp"].includes(seg) ? seg : "missed";
-    const list = await listOf(seg);
-    const el = h("div",
-      h("div.seg", ["missed", "prep", "exp"].map((s) => h(`button${s === seg ? ".on" : ""}`, { onclick: () => (location.hash = `#/note/log/${s}`) }, TYPES[s].label))));
-    if (seg === "missed" && list.length >= 3) {
-      const counts = {};
-      list.forEach((e) => (e.why || []).forEach((w) => (counts[w] = (counts[w] || 0) + 1)));
-      if (Object.keys(counts).length) el.appendChild(h("div.card", h("h3", "못 한 이유 패턴"), bars(counts)));
-    }
-    if (seg === "prep") {
-      const done = list.filter((p) => p.outcome);
-      if (done.length) {
-        const c = { 했다: 0, 일부만: 0, 못했다: 0 };
-        done.forEach((p) => c[p.outcome]++);
-        el.appendChild(h("div.card", h("h3", "꼭 할 말, 실제로 했나"), bars(c)));
-      }
-    }
-    if (seg === "exp") {
-      const done = list.filter((x) => x.matched);
-      if (done.length) el.appendChild(h("div.card", h("h3", "내 추측의 정확도"),
-        h("p.small", `${done.length}번 시도 중 ${done.filter((x) => x.matched === "예상대로").length}번 예상대로였습니다.`),
-        h("p.tiny.muted", { style: { marginTop: "4px" } }, "예상과 다른 경우가 많을수록, 상대 마음을 추측하기보다 물어보는 편이 낫다는 신호입니다.")));
-    }
-    if (!list.length) el.appendChild(h("div.empty", h("b", `${TYPES[seg].label} 기록이 없습니다`), TYPES[seg].desc));
-    list.forEach((e) => el.appendChild(item(e)));
-    el.appendChild(fab(seg));
+  async function memoView(cur) {
+    cur = MEMO_SEGS.includes(cur) ? cur : "thinks";
+    const list = await listOf(cur);
+    const el = h("div", seg(MEMO_SEGS, cur, "#/note/memo", true));
+    if (cur === "todo") {
+      const box = h("div");
+      const draw = () => {
+        box.innerHTML = "";
+        list.filter((t) => !t.done).sort((a, b) => (a.due || "9").localeCompare(b.due || "9") || (a.time || "").localeCompare(b.time || "")).forEach((t) => box.appendChild(todoRow(t, draw)));
+        const done = list.filter((t) => t.done);
+        if (done.length) { box.appendChild(h("div.section-title", "완료")); done.slice(0, 30).forEach((t) => box.appendChild(todoRow(t, draw))); }
+      };
+      draw();
+      el.appendChild(box);
+    } else list.forEach((e) => el.appendChild(item(e)));
+    el.appendChild(fab(cur));
     return el;
   }
 
-  async function judgeView() {
-    const list = await listOf("judge");
-    const today = U.today();
-    const graded = list.filter((j) => j.result);
-    const due = list.filter((j) => !j.result && j.due && j.due <= today);
-    const open = list.filter((j) => !j.result && !(j.due && j.due <= today));
-    const score = (arr) => arr.length ? arr.reduce((a, j) => a + (j.result === "맞음" ? 1 : j.result === "부분" ? 0.5 : 0), 0) / arr.length : null;
-    const el = h("div");
-    if (graded.length) {
-      const byConf = {};
-      graded.forEach((j) => { const k = `${j.confidence}%`; (byConf[k] = byConf[k] || []).push(j); });
-      const byCat = {};
-      graded.forEach((j) => { const k = j.category || "기타"; (byCat[k] = byCat[k] || []).push(j); });
-      el.appendChild(h("div.kpis",
-        h("div.kpi", h("div.l", "적중률"), h("div.v", U.pct0(score(graded))), h("div.s", `채점 ${graded.length}건 (부분=0.5)`)),
-        h("div.kpi", h("div.l", "채점 대기"), h("div.v", `${due.length}건`), h("div.s", `진행 중 ${open.length}건`))));
-      el.appendChild(h("div.card", h("h3", "확신 vs 실제"),
-        h("p.tiny.muted", "확신 80%라고 적은 판단이 실제로 80% 맞으면 판단이 잘 보정된 것입니다."),
-        Object.keys(byConf).sort().map((k) => h("div.hbar", h("span.lab", `확신 ${k}`),
-          h("span.track", h("span.fill", { style: { width: `${score(byConf[k]) * 100}%`, display: "block" } })),
-          h("span.val", `${U.pct0(score(byConf[k]))}`)))));
-      el.appendChild(h("div.card", h("h3", "분류별 적중률"),
-        Object.entries(byCat).map(([k, arr]) => h("div.hbar", h("span.lab", `${k} (${arr.length})`),
-          h("span.track", h("span.fill", { style: { width: `${score(arr) * 100}%`, display: "block" } })), h("span.val", U.pct0(score(arr)))))));
-    }
-    if (!list.length) el.appendChild(h("div.empty", h("b", "판단 노트가 없습니다"), "점심 메뉴, 지원자 합격 여부, 주식 방향처럼 작은 것부터 내 판단을 먼저 적어 보세요."));
-    if (due.length) { el.appendChild(h("div.section-title", "채점할 차례")); due.forEach((e) => el.appendChild(item(e))); }
-    if (open.length) { el.appendChild(h("div.section-title", "진행 중")); open.forEach((e) => el.appendChild(item(e))); }
-    if (graded.length) { el.appendChild(h("div.section-title", "채점 완료")); graded.forEach((e) => el.appendChild(item(e))); }
-    el.appendChild(fab("judge"));
-    return el;
-  }
-
-  async function likeView() {
-    const list = await listOf("like");
-    const today = U.today();
-    const days = new Set(list.map((l) => l.date));
-    const dots = [];
-    for (let i = 29; i >= 0; i--) dots.push(h(`i${days.has(U.addDays(today, -i)) ? ".on" : ""}`));
-    const filled = dots.filter((d) => d.className === "on").length;
-    const tagCounts = {};
-    list.forEach((l) => (l.tags || []).forEach((t) => (tagCounts[t] = (tagCounts[t] || 0) + 1)));
-    const words = {};
-    list.forEach((l) => (l.why || "").split(/[\s,.·]+/).filter((w) => w.length >= 2).forEach((w) => (words[w] = (words[w] || 0) + 1)));
-    const topWords = Object.entries(words).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).slice(0, 8);
-
-    const el = h("div",
-      h("div.card",
-        h("div.h-row", h("h3", "최근 30일"), h("span.small.muted", `${filled}/30일 · ${likeStreak(list)}일 연속`)),
-        h("div.dots", dots),
-        h("p.tiny.muted", { style: { marginTop: "8px" } }, "한 달을 채운 뒤 쭉 훑어보면 반복되는 패턴이 보입니다. 그게 취향입니다.")),
-      Object.keys(tagCounts).length ? h("div.card", h("h3", "자주 고른 종류"), bars(tagCounts)) : null,
-      topWords.length ? h("div.card", h("h3", "이유에 자주 나온 말"), h("div.pills", topWords.map(([w, n]) => h("span.chip", `${w} ${n}`)))) : null);
-
-    if (!list.length) el.appendChild(h("div.empty", h("b", "아직 저장한 좋음이 없습니다"), "옷, 공간, 색, 사진, 폰트 뭐든 괜찮습니다."));
-    else {
+  async function prefView(cur) {
+    cur = PREF_SEGS.includes(cur) ? cur : "good";
+    const list = await listOf(cur);
+    const el = h("div", seg(PREF_SEGS, cur, "#/note/pref"));
+    if (cur === "good") {
       const grid = h("div.grid3");
-      for (const l of list) {
-        const btn = h("button", { onclick: () => (location.hash = `#/note/edit/${l.id}`), "aria-label": l.why });
-        const url = await thumbUrl(l.photo);
-        btn.appendChild(url ? h("img", { src: url, alt: "", loading: "lazy" }) : h("span.noimg", l.why));
-        grid.appendChild(btn);
-      }
+      for (const g of list) grid.appendChild(await mediaTile(g));
       el.appendChild(grid);
+    } else {
+      el.appendChild(h("p.small.muted", { style: { margin: "0 4px 12px" } }, DISLIKE_LINE));
+      list.forEach((e) => el.appendChild(h("button.list-item", { onclick: () => (location.hash = `#/note/edit/${e.id}`) }, h("div.t", e.what), h("div.d", e.why))));
     }
-    el.appendChild(fab("like"));
+    el.appendChild(fab(cur));
     return el;
   }
 
-  async function meView() {
-    const idn = await getIdentity();
-    const values = await getValues();
-    const buffers = await getBuffers();
+  async function mealsView() {
+    const list = (await listOf("meal")).sort((a, b) => b.date.localeCompare(a.date) || MEALS.indexOf(a.slot) - MEALS.indexOf(b.slot));
+    const el = h("div");
+    let last = null;
+    for (const m of list) {
+      if (m.date !== last) { el.appendChild(h("div.section-title", U.dateLabel(m.date))); last = m.date; }
+      const row = h("button.list-item.row", { onclick: () => (location.hash = `#/note/edit/${m.id}`) });
+      const url = m.media ? await mediaUrl(m.media, true) : null;
+      if (url) row.appendChild(h("img", { src: url, alt: "", style: { width: "52px", height: "52px", objectFit: "cover", borderRadius: "10px", flex: "none" } }));
+      row.appendChild(h("div.grow", h("div.t", `${m.slot} · ${m.menu || "사진"}`), (m.with || []).length ? h("div.d", m.with.join(", ")) : null));
+      el.appendChild(row);
+    }
+    el.appendChild(h("button.fab", { "aria-label": "추가", onclick: () => (location.hash = "#/note/new/meal") }, icon("plus")));
+    return el;
+  }
+
+  async function storyView(cur) {
+    const tabs = h("div.seg",
+      h(`button${cur !== "saju" ? ".on" : ""}`, { onclick: () => (location.hash = "#/note/story") }, "스토리"),
+      h(`button${cur === "saju" ? ".on" : ""}`, { onclick: () => (location.hash = "#/note/story/saju") }, "사주"));
+    if (cur === "saju") return h("div", tabs, await sajuView());
+    const list = [...(await listOf("story")), ...(await listOf("episode"))];
+    const el = h("div", tabs);
+    list.forEach((e) => el.appendChild(h("button.list-item", { onclick: () => (location.hash = `#/note/edit/${e.id}`) },
+      h("div.t", e.title), h("div.d", e.story),
+      h("div.m", h("span", U.dateLabel(e.when || e.date)), e.who ? h("span", e.who) : null))));
+    el.appendChild(fab("story"));
+    return el;
+  }
+
+  async function vsView() {
+    const list = await listOf("vs");
+    const el = h("div");
+    const openAdd = () => {
+      const close = U.sheet(null, h("div.stack",
+        h("button.btn.block", { onclick: async () => { await addRandomVs(); close(); Note.route(["vs"]); } }, "랜덤"),
+        h("button.btn.ghost.block", { onclick: () => { close(); location.hash = "#/note/new/vs"; } }, "직접 쓰기")));
+    };
+    const draw = () => {
+      el.innerHTML = "";
+      list.forEach((e) => el.appendChild(vsRow(e, draw)));
+      el.appendChild(h("button.fab", { "aria-label": "추가", onclick: openAdd }, icon("plus")));
+    };
+    draw();
+    return el;
+  }
+
+  /* ---------- 사주 ---------- */
+  const EL_CLASS = { 목: "el-wood", 화: "el-fire", 토: "el-earth", 금: "el-metal", 수: "el-water" };
+
+  /* 사주 용어 사전: 용어 옆 (?)를 누르면 설명이 보인다 */
+  const GLOSS = {
+    "극신강": "나를 돕는 기운이 지나치게 많아 내 힘이 매우 센 상태. 추진력과 자기 확신이 강한 대신, 힘을 쓸 곳과 제어할 장치가 부족하면 소모와 충돌이 커진다.",
+    "신강": "나(일간)를 돕는 기운이 많아 내 힘이 센 사주. 주도적이고 버티는 힘이 강하다.",
+    "신약": "나(일간)를 돕는 기운이 적어 내 힘이 약한 사주. 주변의 도움과 환경의 영향을 크게 받는다.",
+    "일간": "태어난 날의 위 글자. 사주에서 '나 자신'을 뜻하며 모든 해석의 기준이 된다.",
+    "일주": "태어난 날의 기둥(위 글자 + 아래 글자). 나 자신과 배우자 자리를 함께 보여 준다.",
+    "월지": "태어난 달의 아래 글자. 태어난 계절을 뜻하며 사주의 온도·습도와 힘의 크기를 가장 크게 좌우한다.",
+    "일지": "태어난 날의 아래 글자. 내가 앉은 자리이자 배우자 자리.",
+    "원국": "태어난 연·월·일·시 네 기둥 여덟 글자. 타고난 기본 구조.",
+    "대운": "10년 단위로 바뀌는 큰 운의 흐름. 인생의 계절 같은 환경.",
+    "세운": "매년 들어오는 한 해의 운.",
+    "오행": "목(나무)·화(불)·토(흙)·금(쇠)·수(물) 다섯 기운. 서로 돕고(생) 누르는(극) 관계로 균형을 본다.",
+    "천간": "각 기둥의 위 글자(갑을병정무기경신임계). 겉으로 드러나는 기운.",
+    "지지": "각 기둥의 아래 글자(자축인묘진사오미신유술해). 실제 환경과 바탕이 되는 기운.",
+    "지장간": "지지 안에 숨어 있는 천간들. 겉으로 보이지 않지만 상황에 따라 드러나는 잠재 기운.",
+    "십성": "나(일간)를 기준으로 다른 글자가 어떤 역할을 하는지 열 가지로 나눈 것(비견·겁재·식신·상관·편재·정재·편관·정관·편인·정인).",
+    "비견": "나와 같은 오행, 같은 음양. 동료·친구·형제. 자립심과 경쟁심.",
+    "겁재": "나와 같은 오행, 다른 음양. 경쟁자·라이벌. 승부욕이 강하고 재물을 빼앗아 가는 성질도 있다.",
+    "비겁": "비견과 겁재를 합쳐 부르는 말. 나와 같은 편의 기운(동료·경쟁자·자존심).",
+    "식신": "내가 만들어 내는 것 중 안정적인 것. 표현·재능·결과물·먹을 복.",
+    "상관": "내가 만들어 내는 것 중 날카로운 것. 말솜씨·비판·창의성. 규칙에 반발하는 성질.",
+    "식상": "식신과 상관을 합쳐 부르는 말. 표현하고 생산하는 기운.",
+    "정재": "내가 다루는 재물 중 안정적인 것. 월급·꾸준한 수입. 남자에게는 아내.",
+    "편재": "내가 다루는 재물 중 크게 움직이는 것. 사업·투자·부수입. 남자에게는 연인·아버지.",
+    "재성": "정재와 편재를 합쳐 부르는 말. 돈과 현실 감각. 남자에게는 아내·연인.",
+    "정관": "나를 바르게 다스리는 기운. 직장·명예·규칙. 여자에게는 남편.",
+    "편관": "나를 강하게 누르는 기운. 압박·권력·책임. 남자에게는 자녀.",
+    "관성": "정관과 편관을 합쳐 부르는 말. 직장·조직·규율·명예.",
+    "정인": "나를 돕는 기운 중 따뜻한 것. 어머니·학문·자격·문서.",
+    "편인": "나를 돕는 기운 중 치우친 것. 직관·특수 지식·독특한 생각. 의존과 잡생각이 되기도 한다.",
+    "인성": "정인과 편인을 합쳐 부르는 말. 배움·문서·보호·생각.",
+    "용신": "이 사주에 가장 필요한 기운. 균형을 잡아 주는 핵심.",
+    "희신": "용신을 도와주는 기운.",
+    "기신": "이 사주에 해로운 기운. 이미 넘치거나 균형을 깨는 기운.",
+    "구신": "기신을 도와 상황을 더 나쁘게 만드는 기운.",
+    "조후": "사주의 온도와 습도를 맞추는 것. 여름생은 물, 겨울생은 불이 필요하다는 관점.",
+    "억부": "센 기운은 누르고 약한 기운은 돕는다는 관점의 해석 방법.",
+    "격국": "사주의 큰 틀과 성격. 직업적 설계도에 해당한다.",
+    "월겁격": "태어난 달에 겁재가 자리 잡은 격. 자기 힘이 센 대신 재성·관성으로 다스려야 성공하는 구조.",
+    "건록": "일간이 자기 힘을 온전히 갖는 자리(12운성). 자립과 실력.",
+    "제왕": "12운성에서 기운이 가장 센 단계. 자존심·주도권·추진력이 강하다.",
+    "12운성": "일간의 기운이 각 지지에서 얼마나 강하고 약한지를 사람의 일생(태어나 늙어 죽음)에 빗댄 12단계.",
+    "12신살": "지지의 관계로 보는 특수한 기운 12가지(지살·화개살·역마살 등).",
+    "지살": "이동·출장·이사·변화의 기운.",
+    "화개살": "예술·학문·종교·고독한 몰입의 기운.",
+    "육해살": "작은 장애와 질병, 마음고생의 기운.",
+    "역마살": "멀리 움직이는 기운. 이직·이사·해외·출장이 잦다.",
+    "망신살": "체면이 깎이거나 구설이 생기기 쉬운 기운. 반대로 이름을 알리는 계기가 되기도 한다.",
+    "재고귀인": "재물 창고를 여는 귀인. 재물이 쌓이는 시기를 뜻한다.",
+    "간여지동": "한 기둥의 위아래 글자가 같은 오행인 것(예: 丁巳). 자기 기운이 매우 강하고 주관이 뚜렷하다.",
+    "군겁쟁재": "비겁(경쟁자)이 많아 하나의 재물을 여럿이 다투는 구조. 돈이 들어와도 주변으로 새기 쉽다.",
+    "편인도식": "편인이 식신을 눌러 생산·결과물이 막히는 구조. 시작은 많고 마무리가 적어지기 쉽다.",
+    "재생관": "재물이 관(직장·명예)을 살리는 흐름. 돈과 지위가 함께 오른다.",
+    "식신제살": "식신이 편관(압박)을 제어하는 흐름. 재능으로 난관을 해결한다.",
+    "득령": "태어난 달이 나를 돕는 것. 신강 판단의 첫째 기준.",
+    "득지": "내가 앉은 자리(일지)가 나를 돕는 것.",
+    "득세": "주변 글자들이 나를 돕는 것.",
+    "조열": "사주가 덥고 건조한 상태. 물이 꼭 필요하다.",
+    "양인": "일간의 기운이 극단으로 강해지는 자리. 결단력과 공격성.",
+    "삼합": "세 지지가 모여 하나의 큰 오행 기운을 만드는 조합(예: 巳酉丑 → 금).",
+    "방합": "같은 계절의 세 지지가 모여 그 계절의 기운을 만드는 조합(예: 亥子丑 → 수).",
+    "반합": "삼합 중 두 글자만 모인 조합. 삼합보다 약하게 작용한다.",
+    "육합": "두 지지가 짝을 이뤄 묶이는 조합(예: 子丑합).",
+    "원진": "서로 미워하고 원망하는 관계의 두 지지. 이유 없는 서운함과 감정 소모.",
+    "인사해": "寅과 巳가 서로 해치는 관계. 오해와 은근한 갈등, 문서 문제.",
+    "형살": "서로 상처를 주는 관계(형). 다툼·법적 문제·수술수로 나타나기도 한다.",
+    "정임합": "丁과 壬이 합하는 것. 일간 丁이 정관 壬과 묶여 조직·직장에 강하게 연결된다.",
+    "비겁 운": "비견·겁재가 들어오는 시기. 경쟁과 지출이 커진다."
+  };
+  const GLOSS_RE = new RegExp(Object.keys(GLOSS).sort((a, b) => b.length - a.length).map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g");
+  function qBtn(term) {
+    return h("button.q", {
+      type: "button", "aria-label": `${term} 뜻`,
+      onclick: (e) => { e.preventDefault(); e.stopPropagation(); U.sheet(term, h("p", { style: { lineHeight: 1.7 } }, GLOSS[term])); },
+    }, "?");
+  }
+  // text -> [text, term, (?), ...]; only the first occurrence per `seen` set gets a (?)
+  function G(text, seen = new Set()) {
+    if (!text) return text;
+    const out = [];
+    let last = 0;
+    for (const m of String(text).matchAll(GLOSS_RE)) {
+      if (seen.has(m[0])) continue;
+      seen.add(m[0]);
+      const end = m.index + m[0].length;
+      out.push(String(text).slice(last, end), qBtn(m[0]));
+      last = end;
+    }
+    out.push(String(text).slice(last));
+    return out;
+  }
+  // a short label that may be a term itself (절, 묘 etc. are listed separately so they don't match inside words)
+  const STAGE_GLOSS = { 절: "12운성에서 기운이 끊어진 단계. 그 자리의 기운이 약하고, 새로 시작하는 성질.", 묘: "12운성에서 기운이 창고에 들어간 단계. 저장·축적·마무리의 성질.", 제왕: GLOSS["제왕"] };
+  function L(label, seen) {
+    if (STAGE_GLOSS[label] && !seen.has(label)) {
+      seen.add(label);
+      return [label, h("button.q", { type: "button", onclick: (e) => { e.preventDefault(); e.stopPropagation(); U.sheet(label, h("p", { style: { lineHeight: 1.7 } }, STAGE_GLOSS[label])); } }, "?")];
+    }
+    return G(label, seen);
+  }
+
+  async function sajuView() {
+    const s = await U.store.kvGet("saju");
+    if (!s) return h("div.empty", "사주 데이터가 없습니다. 설정 → 백업 불러오기에서 사주 파일을 불러오세요.");
+    const year = new Date().getFullYear();
     const el = h("div");
 
-    const s = { ...idn };
-    const sentence = (k, label, ph) => h("div.field", h("div.label", label), h("textarea.input", { value: s[k] || "", placeholder: ph, style: { minHeight: "64px" }, oninput: (e) => (s[k] = e.target.value) }));
     el.appendChild(h("div.card",
-      h("h3", "나를 정의하는 세 문장"),
-      h("p.small.muted", { style: { marginBottom: "12px" } }, "형용사 대신, 포기해야 할 때 반복해서 고르는 것으로 적어 보세요. 처음엔 틀려도 됩니다."),
-      sentence("choice", "나는 ___와 ___ 중 하나를 골라야 하면 ___를 고른다.", "예: 나는 ○○와 ○○ 중에 ○○를 고른다."),
-      sentence("intolerable", "나는 ___는 절대 못 참는다. 왜냐하면 ___니까.", "이유는 일반론 말고 내 행동 방식으로"),
-      sentence("gap", "사람들은 나에게 ___를 기대하지만, 사실 나는 ___다.", ""),
-      h("div.field", h("div.label", "합쳐서 한 단락으로"), h("textarea.input", { value: s.statement || "", placeholder: "세 문장을 묶은 초안. 고칠 때마다 버전이 남습니다.", oninput: (e) => (s.statement = e.target.value) })),
-      h("button.btn.block", {
-        onclick: async () => {
-          const changed = ["choice", "intolerable", "gap", "statement"].some((k) => (s[k] || "") !== (idn[k] || ""));
-          if (!changed) { U.toast("바뀐 내용이 없습니다"); return; }
-          const history = idn.history || [];
-          if (idn.statement || idn.choice || idn.intolerable || idn.gap) history.unshift({ at: new Date().toISOString(), choice: idn.choice, intolerable: idn.intolerable, gap: idn.gap, statement: idn.statement });
-          await U.store.kvSet("identity", { choice: s.choice, intolerable: s.intolerable, gap: s.gap, statement: s.statement, history: history.slice(0, 50) });
-          U.toast("저장했습니다");
-          Note.route(["me"]);
-        },
-      }, "저장 (이전 버전은 기록에 남음)"),
-      (idn.history || []).length ? h("details", { style: { marginTop: "12px" } },
-        h("summary.small.muted", { style: { cursor: "pointer" } }, `이전 버전 ${idn.history.length}개`),
-        idn.history.map((v) => h("div.card.flat", { style: { marginTop: "8px" } },
-          h("div.tiny.muted", new Date(v.at).toLocaleString("ko-KR")),
-          [v.choice, v.intolerable, v.gap].filter(Boolean).map((x) => h("p.small", { style: { marginTop: "4px" } }, x)),
-          v.statement ? h("p.small.muted", { style: { marginTop: "6px" } }, v.statement) : null))) : null));
+      h("div.row.between", h("h3", { style: { margin: 0 } }, G(s.profile.title)), h("span.chip.accent", G(s.profile.strength))),
+      h("div.small.muted", { style: { marginTop: "6px", lineHeight: 1.7 } },
+        h("div", s.profile.solar), h("div", s.profile.lunar), h("div", s.profile.corrected), h("div", G(`${s.profile.gender} · ${s.profile.place} · ${s.profile.frame}`)))));
+    const gridSeen = new Set();
 
-    // Can't stand -> want to protect
-    const vals = values.map((v) => ({ ...v }));
-    const vlist = h("div");
-    const drawVals = () => {
-      vlist.innerHTML = "";
-      vals.forEach((v, i) => vlist.appendChild(h("div.row", { style: { marginBottom: "8px", alignItems: "flex-start" } },
-        h("input.input.grow", { value: v.hate || "", placeholder: "못 참는 것", oninput: (e) => (v.hate = e.target.value) }),
-        h("span.muted", { style: { paddingTop: "12px" } }, "→"),
-        h("input.input.grow", { value: v.protect || "", placeholder: "그래서 지키고 싶은 것", oninput: (e) => (v.protect = e.target.value) }),
-        h("button.icon-btn", { "aria-label": "삭제", onclick: () => { vals.splice(i, 1); drawVals(); } }, icon("trash")))));
-    };
-    drawVals();
+    // 원국
+    el.appendChild(h("div.section-title", h("span", G("원국"))));
+    el.appendChild(h("div.card.saju-grid", s.pillars.map((p) => h("div.pillar",
+      h("div.pos", p.pos),
+      h("div.ten", L(p.stemTen, gridSeen)),
+      h(`div.glyph.${EL_CLASS[p.stemEl]}`, h("b", p.stem), h("span", `${p.stemKo}·${p.stemEl}`)),
+      h(`div.glyph.${EL_CLASS[p.branchEl]}`, h("b", p.branch), h("span", `${p.branchKo}·${p.branchEl}`)),
+      h("div.ten", L(p.branchTen, gridSeen)),
+      h("div.meta", p.hidden), h("div.meta", L(p.stage, gridSeen)), h("div.meta", L(p.sal, gridSeen))))));
+    el.appendChild(h("p.tiny.muted", { style: { margin: "-4px 4px 0" } }, "위에서부터 ", G("십성 · 천간 · 지지 · 지장간 · 12운성 · 12신살")));
+
+    // 오행
+    const max = Math.max(...Object.values(s.elements));
+    el.appendChild(h("div.section-title", h("span", G("오행 분포"))));
     el.appendChild(h("div.card",
-      h("h3", "못 참는 것 → 지키고 싶은 것"),
-      h("p.small.muted", { style: { marginBottom: "12px" } }, "싫은 건 이미 정확히 압니다. 뒤집으면 내가 지키려는 가치가 나옵니다."),
-      vlist,
-      h("div.row", h("button.btn.ghost.sm", { onclick: () => { vals.push({ hate: "", protect: "" }); drawVals(); } }, "줄 추가"),
-        h("button.btn.sm", { onclick: async () => { await U.store.kvSet("values", vals.filter((v) => v.hate || v.protect)); U.toast("저장했습니다"); } }, "저장"))));
+      Object.entries(s.elements).map(([k, v]) => h("div.hbar",
+        h("span.lab", { style: { width: "28px" } }, k),
+        h("span.track", h(`span.fill.${EL_CLASS[k]}-bg`, { style: { width: `${(v / max) * 100}%`, display: "block" } })),
+        h("span.val", v))),
+      h("p.tiny.muted", { style: { marginTop: "8px" } }, G(s.elementsNote))));
 
-    // Buffers
-    const bufs = buffers.slice();
-    const blist = h("div");
-    const drawBufs = () => {
-      blist.innerHTML = "";
-      bufs.forEach((b, i) => blist.appendChild(h("div.row", { style: { marginBottom: "8px" } },
-        h("input.input.grow", { value: b, oninput: (e) => (bufs[i] = e.target.value) }),
-        h("button.icon-btn", { "aria-label": "삭제", onclick: () => { bufs.splice(i, 1); drawBufs(); } }, icon("trash")))));
-    };
-    drawBufs();
-    el.appendChild(h("div.card",
-      h("h3", "버퍼 문장"),
-      h("p.small.muted", { style: { marginBottom: "12px" } }, "즉답을 끊고 늦게 오는 판단이 도착할 시간을 버는 문장입니다."),
-      blist,
-      h("div.row", h("button.btn.ghost.sm", { onclick: () => { bufs.push(""); drawBufs(); } }, "문장 추가"),
-        h("button.btn.sm", { onclick: async () => { await U.store.kvSet("buffers", bufs.map((b) => b.trim()).filter(Boolean)); U.toast("저장했습니다"); } }, "저장"))));
+    // 용신
+    el.appendChild(h("div.section-title", "필요한 기운 / 피할 기운"));
+    const godSeen = new Set();
+    el.appendChild(h("div.card", s.gods.map((g) => h("div.row", { style: { padding: "6px 0", alignItems: "flex-start" } },
+      h("span.row", { style: { gap: "2px", flex: "none" } }, h(`span.god.${EL_CLASS[g.el]}-bg`, `${g.role} · ${g.el}`), GLOSS[g.role] ? qBtn(g.role) : null),
+      h("span.small", G(g.desc, godSeen))))));
 
-    el.appendChild(h("button.btn.ghost.block", { onclick: () => (location.hash = "#/settings") }, "백업과 설정"));
+    // 요약
+    el.appendChild(h("div.section-title", "핵심 요약"));
+    const sumSeen = new Set();
+    el.appendChild(h("div.card", h("div.stack", s.summary.map((x) => h("p.small", { style: { lineHeight: 1.65 } }, G(x, sumSeen))))));
+
+    // 대운
+    el.appendChild(h("div.section-title", h("span", G("대운 흐름"))));
+    el.appendChild(h("div.daeun", s.daeun.map((d) => {
+      const [y1, y2] = d.years.split("~").map(Number);
+      const now = year >= y1 && year <= y2;
+      return h(`div.dcard${now ? ".now" : ""}`,
+        h("div.tiny.muted", d.ages), h("b", d.ganji), h("div.tiny", d.ko),
+        h("div.dbar", h("i", { style: { height: `${(d.score / 5) * 100}%` } })),
+        h("div.tiny.muted", d.years), now ? h("div.tiny.now-tag", "지금") : null,
+        h("div.dkeys", d.keys.map((k) => h("span", k))));
+    })));
+    el.appendChild(h("p.tiny.muted", { style: { margin: "6px 4px 0" } }, G(s.daeunNote)));
+
+    // 세운
+    el.appendChild(h("div.section-title", h("span", "주요 연도 ", qBtn("세운"))));
+    el.appendChild(h("div", s.seun.map((x) => h(`details.card.seun.${x.type === "위험" ? "risk" : x.type === "기회" ? "good" : "warn"}`,
+      h("summary", h("span.yr", `${x.year} ${x.ganji}`), h("span.small.muted", ` ${x.age}세`), h("span.stag", x.type), h("div.small", { style: { marginTop: "2px" } }, x.title)),
+      h("p.small", { style: { marginTop: "8px", lineHeight: 1.65 } }, G(x.why))))));
+
+    // 외부 리포트
+    if (s.reports?.length) {
+      const toneCls = (t) => (t === "good" ? "good" : t === "risk" ? "risk" : "warn");
+      const toneLabel = { good: "좋음", risk: "주의", warn: "보통" };
+      el.appendChild(h("div.section-title", "사주아이 리포트"));
+      s.reports.forEach((r) => {
+        const body = [];
+        const rs = new Set();
+        if (r.months) {
+          const detail = h("div.small", { style: { marginTop: "8px", lineHeight: 1.65, minHeight: "1px" } });
+          const grid = h("div.mgrid", r.months.map((m) => h(`button.mcell.${toneCls(m.tone)}`, {
+            onclick: (ev) => {
+              ev.preventDefault();
+              grid.querySelectorAll(".mcell").forEach((c) => c.classList.remove("sel"));
+              ev.currentTarget.classList.add("sel");
+              detail.innerHTML = "";
+              detail.append(h("b", `${m.m}월 · ${m.t}`), h("div", G(m.p)));
+            },
+          }, h("b", `${m.m}`), h("span", toneLabel[toneCls(m.tone)]))));
+          body.push(h("div", { style: { marginTop: "12px" } }, h("h4", "월별 흐름"), grid, detail));
+        }
+        if (r.years) {
+          body.push(h("div", { style: { marginTop: "12px" } }, h("h4", "연도별"),
+            r.years.map((y) => h("div.yrow", h(`span.ydot.${toneCls(y.tone)}`), h("div.grow", h("b.small", `${y.y} · ${y.t}`), h("div.small.muted", G(y.p, rs)))))));
+        }
+        if (r.items?.length) {
+          body.push(h("div", { style: { marginTop: "12px" } }, r.items.map((it) =>
+            h("div", { style: { marginTop: "10px" } }, h("h4", it.h), h("p.small", { style: { lineHeight: 1.7, marginTop: "4px" } }, G(it.p, rs))))));
+        }
+        if (r.secret) body.push(h("div.notice", { style: { marginTop: "12px" } }, G(r.secret, rs)));
+        el.appendChild(h("details.card.saju-sec",
+          h("summary", h("b", G(r.title)), h("div.tiny.muted", r.sub), h("div.small", { style: { marginTop: "6px", lineHeight: 1.6 } }, G(r.intro, rs))),
+          body));
+      });
+      if (s.compare?.length) {
+        el.appendChild(h("details.card.saju-sec",
+          h("summary", h("b", "두 해석 비교"), h("div.small.muted", { style: { marginTop: "4px" } }, "사주아이 리포트와 원국 분석이 같거나 다른 지점")),
+          s.compare.map((c) => h("div", { style: { marginTop: "12px" } }, h("h4", c.topic), h("p.small", { style: { marginTop: "4px" } }, G(c.a)), h("p.small.muted", { style: { marginTop: "2px" } }, G(c.b))))));
+      }
+    }
+
+    // 상세
+    el.appendChild(h("div.section-title", "원국 분석 상세"));
+    s.sections.forEach((sec) => {
+      const ss = new Set();
+      el.appendChild(h("details.card.saju-sec",
+        h("summary", h("b", sec.title), h("div.small.muted", { style: { marginTop: "4px" } }, G(sec.summary, ss))),
+        sec.parts.map((pt) => h("div", { style: { marginTop: "14px" } },
+          h("h4", G(pt.h, ss)), pt.p.map((para) => h("p.small", { style: { lineHeight: 1.75, marginTop: "6px" } }, G(para, ss)))))));
+    });
     return el;
   }
 
@@ -495,10 +743,10 @@
     const kv = await U.store.kvAll();
     const blobs = [];
     for (const [k, b] of await U.store.blobAll()) blobs.push([k, await U.blobToDataUrl(b)]);
-    const data = JSON.stringify({ app: "daily-app-note", v: 1, exportedAt: new Date().toISOString(), entries, kv: kv.filter(([k]) => !["passphrase", "vapid", "pushSub"].includes(k)), blobs });
-    const file = new File([data], `my-note-backup-${U.today()}.json`, { type: "application/json" });
+    const data = JSON.stringify({ app: "daily-app-note", v: 3, exportedAt: new Date().toISOString(), entries, kv: kv.filter(([k]) => !["passphrase", "vapid", "pushSub"].includes(k)), blobs });
+    const file = new File([data], `memo-backup-${U.today()}.json`, { type: "application/json" });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: "마이 노트 백업" }); return; } catch { /* fall through */ }
+      try { await navigator.share({ files: [file], title: "메모 백업" }); return; } catch { /* fall through */ }
     }
     const a = h("a", { href: URL.createObjectURL(file), download: file.name });
     document.body.appendChild(a);
@@ -509,53 +757,69 @@
   async function importBackup(file) {
     try {
       const j = JSON.parse(await file.text());
-      if (j.app !== "daily-app-note") throw new Error("마이 노트 백업 파일이 아닙니다.");
-      if (!U.confirm(`기록 ${j.entries.length}개를 불러옵니다. 같은 기록은 덮어씁니다. 계속할까요?`)) return;
+      if (j.app !== "daily-app-note") throw new Error("메모 백업 파일이 아닙니다.");
+      if (!(await U.ask(`${j.entries.length}개 기록${(j.kv || []).length ? "과 설정" : ""}을 불러옵니다. 같은 기록은 덮어씁니다.`, { ok: "불러오기" }))) return;
       for (const e of j.entries) await U.store.put(e);
       for (const [k, v] of j.kv || []) await U.store.kvSet(k, v);
       for (const [k, d] of j.blobs || []) await U.store.blobSet(k, await U.dataUrlToBlob(d));
-      U.toast("불러왔습니다");
+      U.toast("불러옴");
     } catch (e) {
-      alert(e.message || String(e));
+      U.alert(e.message || String(e));
+    }
+  }
+
+  async function launcherCount() {
+    try {
+      const todos = await listOf("todo");
+      return todos.filter((t) => !t.done && t.due && t.due <= U.today()).length;
+    } catch {
+      return 0;
     }
   }
 
   async function launcherMeta() {
     try {
-      const [judges, likes] = await Promise.all([listOf("judge"), listOf("like")]);
-      const due = judges.filter((j) => !j.result && j.due && j.due <= U.today()).length;
-      const parts = [];
-      if (due) parts.push(`채점 대기 ${due}건`);
-      const st = likeStreak(likes);
-      parts.push(st ? `좋음 ${st}일 연속` : "오늘의 좋음 비어 있음");
-      return parts;
+      const todos = await listOf("todo");
+      const n = todos.filter((t) => !t.done && t.due && t.due <= U.today()).length;
+      return n ? [`오늘 할 일 ${n}`] : [];
     } catch {
       return [];
     }
   }
 
+  function backFor(type) {
+    if (MEMO_SEGS.includes(type)) return `#/note/memo/${type}`;
+    if (PREF_SEGS.includes(type)) return `#/note/pref/${type}`;
+    if (type === "story" || type === "episode") return "#/note/story";
+    if (type === "vs") return "#/note/vs";
+    if (type === "meal") return "#/note";
+    return "#/note";
+  }
+
   window.Note = {
     launcherMeta,
+    launcherCount,
     exportBackup,
     importBackup,
     async route(rest) {
       const [view, arg] = rest;
       const L = (active, title, body, extra = {}) => App.layout({ app: "note", title, tabs: TABS, active, body, ...extra });
-      if (view === "new" && TYPES[arg]) return L(null, `새 ${TYPES[arg].label}`, formView(arg), { back: backFor(arg), noTabs: true });
+      if (view === "new" && TYPES[arg]) {
+        const slot = rest[2] ? decodeURIComponent(rest[2]) : null;
+        const preset = arg === "meal" && MEALS.includes(slot) ? { slot } : null;
+        return L(null, preset ? `${slot} 기록` : TYPES[arg].label, formView(arg, null, { preset }), { back: backFor(arg), noTabs: true });
+      }
+      if (view === "meals") return L(null, "식사 기록", mealsView(), { back: "#/note", noTabs: true });
       if (view === "edit" && arg) {
         const e = await U.store.get(arg);
-        if (!e) return L(null, "기록", Promise.resolve(h("div.empty", h("b", "기록을 찾지 못했습니다"))), { back: "#/note", noTabs: true });
+        if (!e || !TYPES[e.type]) return L(null, "메모", Promise.resolve(h("div.empty", "찾을 수 없습니다")), { back: "#/note", noTabs: true });
         return L(null, TYPES[e.type].label, formView(e.type, e), { back: backFor(e.type), noTabs: true });
       }
-      if (view === "log") return L("log", "기록", logView(arg));
-      if (view === "judge") return L("judge", "판단 노트", judgeView());
-      if (view === "like") return L("like", "좋음 앨범", likeView());
-      if (view === "me") return L("me", "나", meView());
-      return L("today", "마이 노트", todayView(), { right: h("div.sub", U.dateLabel(U.today())) });
+      if (view === "memo") return L("memo", "메모", memoView(arg));
+      if (view === "pref") return L("pref", "선호", prefView(arg));
+      if (view === "story" || view === "episode") return L("story", "스토리", storyView(arg));
+      if (view === "vs") return L("vs", "VS", vsView());
+      return L("today", "똑똑해지기", todayView(), { right: h("div.sub", U.dateLabel(U.today())) });
     },
   };
-
-  function backFor(type) {
-    return type === "judge" ? "#/note/judge" : type === "like" ? "#/note/like" : `#/note/log/${type}`;
-  }
 })();

@@ -33,29 +33,25 @@
   /* Launcher */
   async function launcher() {
     root.innerHTML = "";
-    const hour = new Date().getHours();
-    const hello = hour < 11 ? "좋은 아침이에요" : hour < 18 ? "오늘도 수고하고 있어요" : "오늘 하루 정리할 시간";
-    const stockMeta = h("div.meta", h("span", "데이터 확인 중"));
-    const noteMeta = h("div.meta");
+    const stockBadge = h("span.app-badge", { style: { display: "none" } });
+    const noteBadge = h("span.app-badge", { style: { display: "none" } });
+    const appIcon = (cls, ic, label, href, badge) =>
+      h(`button.app-icon.${cls}`, { onclick: () => (location.hash = href) },
+        h("span.app-square", icon(ic), badge), h("span.app-label", label));
     const el = h(
       "div.launch",
-      h("div.hello", `${U.dateLabel(U.today())} · ${hello}`),
-      h("h1", "무엇을 열까요?"),
-      h("button.tile.stock", { onclick: () => (location.hash = "#/stocks") },
-        h("div.badge", icon("chart")), h("span.arrow", "›"),
-        h("h2", "주식 분석"), h("p", "매일 아침 06:50 업데이트되는 발굴 후보와 보유 종목 점검"), stockMeta),
-      h("button.tile.note", { onclick: () => (location.hash = "#/note") },
-        h("div.badge", icon("note")), h("span.arrow", "›"),
-        h("h2", "마이 노트"), h("p", "했어야 할 말, 대화 장전, 판단 채점, 좋음 앨범"), noteMeta),
+      h("h1", U.dateLabel(U.today())),
+      h("div.app-grid",
+        appIcon("stock", "chart", "부자되기", "#/stocks", stockBadge),
+        appIcon("note", "note", "똑똑해지기", "#/note", noteBadge)),
       h("div.foot", h("span", "모든 노트는 이 기기에만 저장됩니다"), h("button.link-btn", { onclick: () => (location.hash = "#/settings") }, "설정")),
     );
     root.appendChild(el);
-    // Lightweight meta
+    // Badges: new report today / todos due
     fetch("data/index.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((idx) => {
-      stockMeta.innerHTML = "";
-      stockMeta.appendChild(h("span", idx?.dates?.length ? `최근 업데이트 ${U.dateLabel(idx.dates[0])}` : "아직 데이터가 없습니다"));
-    }).catch(() => { stockMeta.innerHTML = ""; stockMeta.appendChild(h("span", "오프라인")); });
-    if (window.Note) Note.launcherMeta().then((parts) => parts.forEach((p) => noteMeta.appendChild(h("span", p))));
+      if (idx?.dates?.[0] === U.today()) { stockBadge.textContent = "N"; stockBadge.style.display = ""; }
+    }).catch(() => {});
+    if (window.Note) Note.launcherCount().then((n) => { if (n) { noteBadge.textContent = n; noteBadge.style.display = ""; } });
   }
 
   /* Settings */
@@ -104,9 +100,9 @@
 
     // Backup
     body.append(
-      h("div.section-title", "마이 노트 백업"),
+      h("div.section-title", "메모 백업"),
       h("div.card",
-        h("p.small.muted", "노트와 사진은 이 기기에만 저장됩니다. 기기를 바꾸거나 Safari 데이터를 지우기 전에 백업 파일을 저장해 두세요."),
+        h("p.small.muted", "메모와 사진·영상은 이 기기에만 저장됩니다. 기기를 바꾸기 전에 백업하세요."),
         h("div.row", { style: { marginTop: "12px" } },
           h("button.btn.ghost.grow", { onclick: () => Note.exportBackup() }, "백업 파일 저장"),
           h("label.btn.ghost.grow", { style: { position: "relative" } }, "백업 불러오기",
@@ -138,7 +134,7 @@
       U.toast("알림이 연결됐습니다");
       done();
     } catch (e) {
-      alert(e.message || String(e));
+      U.alert(e.message || String(e));
     }
   }
 

@@ -153,8 +153,7 @@
 
   function footer(d) {
     return h("div",
-      h("p.disclaimer", `기준: 한국 ${d.asOfKR || "-"} · 미국 ${d.asOfUS || "-"} 종가 · 원/달러 ${d.fx ? Math.round(d.fx).toLocaleString() : "미확인"} · 생성 ${new Date(d.generatedAt).toLocaleString("ko-KR")}`),
-      h("p.disclaimer", d.disclaimer));
+      h("p.disclaimer", `기준: 한국 ${d.asOfKR || "-"} · 미국 ${d.asOfUS || "-"} 종가 · 원/달러 ${d.fx ? Math.round(d.fx).toLocaleString() : "미확인"} · 생성 ${new Date(d.generatedAt).toLocaleString("ko-KR")}`));
   }
 
   async function historyView() {
@@ -181,7 +180,7 @@
       if (view === "holdings") return go("holdings", "보유 종목 점검", holdingsView);
       if (view === "history") return App.layout({ app: "stock", title: "지난 분석", tabs: TABS, active: "history", body: historyView() });
       if (view === "day" && arg) return go("history", U.dateLabel(arg), (d) => todayView(d, `${U.dateLabel(arg)}에 만든 분석입니다. 고변동·보유 탭은 최신 분석을 보여줍니다.`), { date: arg, back: "#/stocks/history" });
-      return go("today", "주식 분석", (d) => todayView(d), { sub: undefined });
+      return go("today", "부자되기", (d) => todayView(d), { sub: undefined });
     },
   };
 })();

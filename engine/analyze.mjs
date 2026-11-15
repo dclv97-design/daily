@@ -213,7 +213,7 @@ async function main() {
     `고변동 ${highvol.picks.length}`,
   ];
   if (mover) parts.push(`보유 ${mover.name} 전일 ${(mover.chg1 * 100).toFixed(1)}%`);
-  await sendPush({ title: `종목 분석 ${today.slice(5).replace("-", "/")}`, body: parts.join(", ") });
+  await sendPush({ title: `BARMS ${today.slice(5).replace("-", "/")}`, body: parts.join(", ") });
 }
 
 function fmtPrice(v, market) {
