@@ -108,7 +108,7 @@ async function collect(g, now) {
   return items;
 }
 
-export async function runNews({ dataDir, today }) {
+export async function runNews({ dataDir, today, extraLine = null }) {
   const now = Date.now();
   const pools = {};
   for (const g of GROUPS) pools[g.id] = await collect(g, now);
@@ -164,7 +164,7 @@ export async function runNews({ dataDir, today }) {
   const counts = groups.map((g) => `${g.label} ${summary?.[g.id]?.length ?? g.items.length}`).join(" · ");
   await sendPush({
     title: `똑똑해지기 ${today.slice(5).replace("-", "/")}`,
-    body: [lead, counts].filter(Boolean).join("\n").slice(0, 180),
+    body: [lead, counts, extraLine].filter(Boolean).join("\n").slice(0, 200),
     url: "./#/news",
   });
 }
