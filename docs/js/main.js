@@ -106,7 +106,7 @@
         h("div.row", { style: { marginTop: "12px" } },
           h("button.btn.ghost.grow", { onclick: () => Note.exportBackup() }, "백업 파일 저장"),
           h("label.btn.ghost.grow", { style: { position: "relative" } }, "백업 불러오기",
-            h("input", { type: "file", accept: "application/json,.json", style: { position: "absolute", inset: 0, opacity: 0 }, onchange: (e) => e.target.files[0] && Note.importBackup(e.target.files[0]) })))),
+            h("input", { type: "file", style: { position: "absolute", inset: 0, opacity: 0 }, onchange: (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) Note.importBackup(f); } })))),
     );
 
     // Theme

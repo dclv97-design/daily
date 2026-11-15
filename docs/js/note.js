@@ -756,9 +756,16 @@
 
   async function importBackup(file) {
     try {
-      const j = JSON.parse(await file.text());
+      let j;
+      try { j = JSON.parse((await file.text()).replace(/^﻿/, "")); }
+      catch { throw new Error(`'${file.name}'은(는) 백업 파일 형식이 아닙니다. saju-import.json 또는 note-seed.json을 골라 주세요.`); }
       if (j.app !== "daily-app-note") throw new Error("메모 백업 파일이 아닙니다.");
-      if (!(await U.ask(`${j.entries.length}개 기록${(j.kv || []).length ? "과 설정" : ""}을 불러옵니다. 같은 기록은 덮어씁니다.`, { ok: "불러오기" }))) return;
+      j.entries = j.entries || [];
+      const parts = [];
+      if (j.entries.length) parts.push(`기록 ${j.entries.length}개`);
+      if ((j.kv || []).some(([k]) => k === "saju")) parts.push("사주 데이터");
+      else if ((j.kv || []).length) parts.push("설정");
+      if (!(await U.ask(`${parts.join(", ") || "빈 백업"}을(를) 불러옵니다. 같은 내용은 덮어씁니다.`, { ok: "불러오기" }))) return;
       for (const e of j.entries) await U.store.put(e);
       for (const [k, v] of j.kv || []) await U.store.kvSet(k, v);
       for (const [k, d] of j.blobs || []) await U.store.blobSet(k, await U.dataUrlToBlob(d));
