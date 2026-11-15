@@ -2,7 +2,8 @@
 // one-month events for the given tickers, using the server-side web search tool.
 import Anthropic from "@anthropic-ai/sdk";
 
-const MODEL = "claude-sonnet-5-5";
+const MODEL = "claude-sonnet-5-5"; // catalyst research (web search)
+const NEWS_MODEL = "claude-haiku-5-5"; // headline summary only
 
 const SYSTEM = `You are a research assistant for Korean (KOSPI/KOSDAQ) and US (NYSE/NASDAQ) equities.
 You only gather facts; you never give buy/sell instructions.
@@ -104,15 +105,18 @@ ${list}
 Return only this JSON inside <json></json> tags:
 <json>{"headline": "", "top": [""], "world": [""], "biz": [""], "spa": [""], "fashion": [""], "hr": [""]}</json>`;
   try {
-    const res = await client.beta.messages.create({
-      model: MODEL,
+    // Haiku has no server-side refusal fallback; on a refusal the app just shows headlines.
+    const res = await client.messages.create({
+      model: NEWS_MODEL,
       max_tokens: 4000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
       output_config: { effort: "low" },
       system: "You summarize news headlines for one reader. Korean output. Facts only, no opinions or predictions.",
       messages: [{ role: "user", content: prompt }],
     });
+    if (res.stop_reason === "refusal") {
+      console.log("claude news: refused");
+      return null;
+    }
     const text = res.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
     return extractJson(text);
   } catch (e) {
