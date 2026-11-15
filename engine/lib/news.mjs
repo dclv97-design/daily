@@ -134,7 +134,15 @@ export async function runNews({ dataDir, today }) {
     summary = await writeNewsStories({ today, groups: GROUPS.map((g) => ({ id: g.id, title: g.title, stories: stories[g.id] })) });
     if (summary) {
       for (const g of GROUPS) {
-        summary[g.id] = (summary[g.id] || []).map((s, k) => ({ ...s, refs: stories[g.id][k]?.refs || [] })).filter((s) => s.title);
+        // match each summary to its story by the story number the model echoes back (never by position),
+        // keep one summary per story, and drop anything the model added.
+        const byStory = new Map();
+        for (const s of summary[g.id] || []) {
+          const k = Number(s.story);
+          if (!Number.isInteger(k) || !stories[g.id][k] || byStory.has(k) || !s.title) continue;
+          byStory.set(k, { title: s.title, body: s.body, why: s.why, refs: stories[g.id][k].refs });
+        }
+        summary[g.id] = [...byStory.keys()].sort((a, b) => a - b).map((k) => byStory.get(k));
       }
     }
   }

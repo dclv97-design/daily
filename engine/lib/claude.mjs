@@ -138,17 +138,19 @@ Return only this JSON inside <json></json> tags (numbers are the article numbers
 // Step 2: summarize the chosen stories from their article text.
 export async function writeNewsStories({ today, groups }) {
   const blocks = groups.map((g) => `## ${g.id} (${g.title})\n${g.stories.map((s, k) => `### story ${k}\n${s.arts.map((a) => `- ${a.t} (${a.src}): ${a.text}`).join("\n")}`).join("\n") || "(none)"}`).join("\n\n");
-  const prompt = `Today is ${today} (KST). For each group below, summarize every story in the same order, using only the article text given.
+  const prompt = `Today is ${today} (KST). For each group below, write exactly one summary per story, using only the article text given for that story.
+Never split a story into two summaries, never merge two stories, and never add a story that is not listed.
 For each story write:
+- "story": the story number as given ("### story N" -> N)
 - "title": a short Korean title, under 30 characters
 - "body": the key content in 2 or 3 plain Korean sentences, under 180 characters, with the concrete numbers, dates and who decided what
-- "why": one line, under 60 characters, on why it matters to this reader (for life: a person in their 20s-30s; for world: Korea or the reader; for store: SPAO store HR or store operations). Do not invent effects the articles do not support; if unclear, say what to watch.
+- "why": one line, under 60 characters, on why it matters to this reader (for life: a person in their 20s-30s; for world: Korea or the reader; for store: SPAO store HR or store operations). Do not invent effects the articles do not support; when the effect is unclear, name what to watch next. Do not write about what the article does not mention.
 Also write "headline": one line under 45 characters for the single most important story of the day.
 
 ${blocks}
 
-Return only this JSON inside <json></json> tags, one entry per story in the given order:
-<json>{"headline": "", "life": [{"title": "", "body": "", "why": ""}], "world": [], "store": []}</json>`;
+Return only this JSON inside <json></json> tags:
+<json>{"headline": "", "life": [{"story": 0, "title": "", "body": "", "why": ""}], "world": [], "store": []}</json>`;
   try {
     return await newsCall(prompt, 6000);
   } catch (e) {
