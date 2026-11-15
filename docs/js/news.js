@@ -8,6 +8,7 @@
     { id: "life", label: "2030", icon: "person", href: "#/news/life" },
     { id: "world", label: "국제", icon: "globe", href: "#/news/world" },
     { id: "store", label: "매장 HR", icon: "shirt", href: "#/news/store" },
+    { id: "flights", label: "항공권", icon: "plane", href: "#/news/flights" },
     { id: "books", label: "책", icon: "book", href: "#/news/books" },
   ];
   const GROUP_IDS = ["life", "world", "store"];
@@ -128,6 +129,55 @@
     return h("div", (idx.dates || []).map((dt) => h("button.list-item", { onclick: () => (location.hash = `#/news/day/${dt}`) }, h("div.t", U.dateLabel(dt)))));
   }
 
+  /* 항공권: 2027 연휴 서울 출발 직항 최저가 (data/flights/latest.json). */
+  const won = (n) => `${(n / 10000).toFixed(1).replace(/\.0$/, "")}만원`;
+  const WD = ["일", "월", "화", "수", "목", "금", "토"];
+  const md = (iso) => { const d = new Date(`${iso.slice(0, 10)}T00:00:00`); return `${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})`; };
+  const hm = (iso) => iso.slice(11, 16);
+  const tripLine = (t) => `${md(t.dep)} ${hm(t.dep)} → ${md(t.ret)} ${hm(t.ret)} · ${t.flight}`;
+
+  function flightRow(r) {
+    const t = r.now || r.low;
+    const isLow = r.now && r.low && r.now.price <= r.low.price;
+    return h(t.link ? "a.list-item.flight-row" : "div.list-item.flight-row", t.link ? { href: t.link, target: "_blank", rel: "noopener" } : {},
+      h("div.flight-top", h("b", r.city), h("span.tiny.muted", r.country), h("span.grow"), h("b.flight-price", won(t.price))),
+      h("div.d", tripLine(t)),
+      h("div.m",
+        r.now ? h("span", isLow ? "오늘 확인 · 역대 최저" : `오늘 확인 · 최저 ${won(r.low.price)} (${U.dateLabel(r.low.seen)})`) : h("span", `오늘은 없음 · 최저 ${U.dateLabel(r.low.seen)} 기록`)));
+  }
+
+  async function flightsView(openId) {
+    let d;
+    try {
+      const r = await fetch("data/flights/latest.json", { cache: "no-store" });
+      if (!r.ok) throw new Error();
+      d = await r.json();
+    } catch {
+      return h("div.empty", h("b", "아직 항공권 데이터가 없습니다"), "평일 아침 분석 때 함께 모읍니다.");
+    }
+    const el = h("div",
+      h("p.small.muted", { style: { margin: "0 4px 12px" } }, "서울 출발 · 직항 왕복 · 4~5일 · 귀국편 15시 이후 · 위탁수화물은 예약 전 직접 확인"));
+    for (const hd of d.holidays) {
+      const open = openId === hd.id;
+      const card = h("div.card.flight-card");
+      const head = h("button.flight-head", { onclick: () => (location.hash = open ? "#/news/flights" : `#/news/flights/${hd.id}`) },
+        h("b", hd.label), h("span.tiny.muted", hd.must.length > 1 ? `${md(hd.must[0])}~${md(hd.must.at(-1))}` : md(hd.must[0])), h("span.grow"),
+        hd.rows.length ? h("b.flight-price", `${hd.rows[0].city} ${won((hd.rows[0].now || hd.rows[0].low).price)}~`) : h("span.small.muted", "아직 없음"));
+      card.appendChild(head);
+      if (open || d.holidays.length === 1) {
+        if (!hd.rows.length) card.appendChild(h("p.small.muted", "최근 검색된 직항 가격이 아직 없습니다. 날짜가 가까워질수록 늘어납니다."));
+        hd.rows.slice(0, 15).forEach((r) => card.appendChild(flightRow(r)));
+      } else {
+        hd.rows.slice(0, 3).forEach((r) => card.appendChild(flightRow(r)));
+        if (hd.rows.length > 3) card.appendChild(h("button.link-btn.small", { onclick: () => (location.hash = `#/news/flights/${hd.id}`) }, `${hd.rows.length - 3}곳 더 보기`));
+      }
+      el.appendChild(card);
+    }
+    el.appendChild(h("p.tiny.muted", { style: { margin: "8px 4px 0" } },
+      `${U.dateLabel(d.date)} 아침 기준 · Aviasales 이용자가 최근 48시간 안에 검색한 가격이라 실제 가격과 다를 수 있습니다 · 누르면 Aviasales 검색이 열립니다`));
+    return el;
+  }
+
   /* 읽은 책: 이 기기에만 저장 (메모 백업에 함께 포함) */
   async function booksView(cur) {
     const STATUS = Note.BOOK_STATUS;
@@ -185,6 +235,7 @@
         const st = rest[2] ? decodeURIComponent(rest[2]) : null;
         return L("books", arg === "new" ? "책 추가" : "책", bookForm(arg, st), { back: `#/news/books${st ? `/${encodeURIComponent(st)}` : ""}`, noTabs: true });
       }
+      if (view === "flights") return L("flights", "연휴 항공권", flightsView(arg));
       const TITLES = { life: "2030이 알아야 할 것", world: "국제 정세", store: "SPAO 매장 HR 체크" };
       if (GROUP_IDS.includes(view)) return L(view, TITLES[view], topicView(view));
       return L("brief", "똑똑해지기", briefView(), { right: h("button.link-btn.small", { onclick: () => (location.hash = "#/news/history") }, "지난 뉴스") });
