@@ -1,0 +1,48 @@
+name: daily-analysis
+
+on:
+  schedule:
+    # 06:50 KST, Monday-Friday (= 21:50 UTC, Sunday-Thursday). GitHub may start scheduled runs a few minutes late.
+    - cron: "50 21 * * 0-4"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-analysis
+  cancel-in-progress: false
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install
+        working-directory: engine
+        run: npm install --no-audit --no-fund
+
+      - name: Analyze
+        working-directory: engine
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DATA_PASSPHRASE: ${{ secrets.DATA_PASSPHRASE }}
+          HOLDINGS_JSON: ${{ secrets.HOLDINGS_JSON }}
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          PUSH_SUBSCRIPTION: ${{ secrets.PUSH_SUBSCRIPTION }}
+        run: node analyze.mjs
+
+      - name: Publish encrypted data
+        run: |
+          git config user.name "daily-bot"
+          git config user.email "daily-bot@users.noreply.github.com"
+          git add docs/data
+          git commit -m "data: $(date -u +%Y-%m-%d)" || echo "no changes"
+          git push
