@@ -80,7 +80,7 @@
         appIcon("stock", "chart", "부자되기", "#/stocks", stockBadge),
         appIcon("news", "globe", "똑똑해지기", "#/news", newsBadge),
         appIcon("note", "note", "똑부러지기", "#/note", noteBadge),
-        appIcon("trip", "plane", "야무져지기", "#/trip", tripBadge))),
+        appIcon("trip", "plane", "알차게떠나기", "#/trip", tripBadge))),
       h("div.home-cards", newsSlot, todoSlot),
       q ? h("p.daily-quote", h("span", `“${q.t}”`), h("span.by", `- ${q.by}`)) : null,
       h("div.foot", h("span", "모든 노트는 이 기기에만 저장됩니다"), h("button.link-btn", { onclick: () => (location.hash = "#/settings") }, "설정")),

@@ -1,4 +1,4 @@
-/* 야무져지기: 2027 연휴 서울 출발 직항 항공권 최저가. Data: data/flights/latest.json (plain). */
+/* 알차게떠나기: 2027 연휴 서울 출발 직항 항공권 최저가. Data: data/flights/latest.json (plain). */
 (function () {
   const { h } = U;
 
@@ -68,7 +68,7 @@
     badge,
     route(rest) {
       const [id] = rest;
-      return App.layout({ app: "trip", title: "야무져지기", sub: "2027 연휴 항공권", body: listView(id), back: id ? "#/trip" : "#/" });
+      return App.layout({ app: "trip", title: "알차게떠나기", sub: "2027 연휴 항공권", body: listView(id), back: id ? "#/trip" : "#/" });
     },
   };
 })();
