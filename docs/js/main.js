@@ -36,6 +36,7 @@
     const stockBadge = h("span.app-badge", { style: { display: "none" } });
     const newsBadge = h("span.app-badge", { style: { display: "none" } });
     const noteBadge = h("span.app-badge", { style: { display: "none" } });
+    const tripBadge = h("span.app-badge", { style: { display: "none" } });
     const appIcon = (cls, ic, label, href, badge) =>
       h(`button.app-icon.${cls}`, { onclick: () => (location.hash = href) },
         h("span.app-square", icon(ic), badge), h("span.app-label", label));
@@ -46,7 +47,8 @@
       h("div.app-grid",
         appIcon("stock", "chart", "부자되기", "#/stocks", stockBadge),
         appIcon("news", "globe", "똑똑해지기", "#/news", newsBadge),
-        appIcon("note", "note", "똑부러지기", "#/note", noteBadge)),
+        appIcon("note", "note", "똑부러지기", "#/note", noteBadge),
+        appIcon("trip", "plane", "야무져지기", "#/trip", tripBadge)),
       q ? h("p.daily-quote", h("span", `“${q.t}”`), h("span.by", `- ${q.by}`)) : null,
       h("div.foot", h("span", "모든 노트는 이 기기에만 저장됩니다"), h("button.link-btn", { onclick: () => (location.hash = "#/settings") }, "설정")),
     );
@@ -57,6 +59,7 @@
     }).catch(() => {});
     if (window.News) News.hasToday().then((y) => { if (y) { newsBadge.textContent = "N"; newsBadge.style.display = ""; } });
     if (window.Note) Note.launcherCount().then((n) => { if (n) { noteBadge.textContent = n; noteBadge.style.display = ""; } });
+    if (window.Trip) Trip.badge().then((n) => { if (n) { tripBadge.textContent = "↓"; tripBadge.style.display = ""; } });
   }
 
   /* Settings */
@@ -159,6 +162,7 @@
       if (app === "stocks") return Stocks.route(rest);
       if (app === "note") return Note.route(rest);
       if (app === "news") return News.route(rest);
+      if (app === "trip") return Trip.route(rest);
       return launcher();
     } catch (e) {
       console.error(e);
