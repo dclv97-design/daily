@@ -139,6 +139,7 @@ export async function pickNewsStories({ today, groups }) {
   const prompt = `Today is ${today} (KST). Below are recent Korean news articles for each group, numbered per group.
 For each group choose up to 5 of the most important stories for this reader, most important first.
 A story is one event. Put several article numbers in one story only when they report the same event; never put different events in one story.
+Every story in a group must be a different topic: articles that are follow-ups, reactions or side angles of the same event (for example the same scandal in different exams) go into one story, never into separate stories. Prefer covering more different topics.
 For store, choose only articles that really matter for SPAO store HR or the SPA/fashion retail business; fewer than 5 is fine, and an empty list is fine.
 Also write "headline": one Korean line under 45 characters for the single most important story of the day.
 
