@@ -1,0 +1,26 @@
+{
+  "_note": "PC 모드(CLAUDE=off)일 때 Claude Code가 웹 검색으로 직접 작성한 재료 목록. 작성일로부터 3일 동안만 쓰입니다. 정보 제공용이며 투자 권유가 아닙니다.",
+  "date": "2026-11-22",
+  "candidates": [
+    { "name": "두산퓨얼셀", "market": "KR", "symbol": "336260", "catalyst": "코스피200 정기변경 신규 편입 (12/11 적용)", "date": "2026-12-11", "confirmed": true, "risk": "편입 기대가 이미 주가에 반영돼 적용일 전후 차익 매물이 나올 수 있음" },
+    { "name": "대덕전자", "market": "KR", "symbol": "353200", "catalyst": "코스피200 정기변경 신규 편입 (12/11 적용)", "date": "2026-12-11", "confirmed": true, "risk": "편입 수급이 적용일에 끝나면 반대 매매로 되돌림 가능" },
+    { "name": "효성", "market": "KR", "symbol": "004800", "catalyst": "코스피200 정기변경 신규 편입 (12/11 적용)", "date": "2026-12-11", "confirmed": true, "risk": "지주사 할인이 커서 편입 효과가 제한적일 수 있음" },
+    { "name": "삼아알미늄", "market": "KR", "symbol": "006110", "catalyst": "코스피200 정기변경 신규 편입 (12/11 적용)", "date": "2026-12-11", "confirmed": true, "risk": "거래대금이 작아 변동성이 크고 편입 후 관심이 빠르게 식을 수 있음" },
+    { "name": "PI첨단소재", "market": "KR", "symbol": "178920", "catalyst": "코스피200 정기변경 신규 편입 (12/11 적용)", "date": "2026-12-11", "confirmed": true, "risk": "업황(폴리이미드 필름) 부진이 이어지면 편입 효과를 상쇄" },
+    { "name": "리가켐바이오", "market": "KR", "symbol": "141080", "catalyst": "ASH 2026에서 CD33 ADC 전임상·파트너 IKS03 1상 중간 결과 발표", "date": "2026-12-12", "confirmed": true, "risk": "중간 데이터가 기대에 못 미치면 학회 후 급락 가능" },
+    { "name": "지씨셀", "market": "KR", "symbol": "144510", "catalyst": "ASH 2026에서 CD5 CAR-NK(GCC2005) 1a상 전체 데이터 발표", "date": "2026-12-12", "confirmed": true, "risk": "환자 수(18명)가 적어 효능 해석 논란 가능" },
+    { "name": "큐로셀", "market": "KR", "symbol": "372320", "catalyst": "ASH 2026에서 CAR-T 림카토 장기 추적 데이터 포스터 발표", "date": "2026-12-12", "confirmed": true, "risk": "이미 공개된 데이터의 연장이라 재료 소멸로 끝날 수 있음" }
+  ],
+  "events": {
+    "141080": { "event": "ASH 2026 발표 (12/12~15)", "date": "2026-12-12", "confirmed": true },
+    "336260": { "event": "코스피200 편입 적용", "date": "2026-12-11", "confirmed": true },
+    "353200": { "event": "코스피200 편입 적용", "date": "2026-12-11", "confirmed": true },
+    "004800": { "event": "코스피200 편입 적용", "date": "2026-12-11", "confirmed": true }
+  },
+  "sources": [
+    "https://news.mtn.co.kr/article/2026111816262536506",
+    "https://sateconomy.co.kr/news/view/1065599014147355",
+    "https://news.mtn.co.kr/article/2026111313432394087",
+    "https://www.koreancenter.or.kr/news/articleView.html?idxno=1435038"
+  ]
+}
