@@ -200,10 +200,10 @@
     homeCard,
     route(rest) {
       const [view, arg] = rest;
-      const L = (active, title, body, extra = {}) => App.layout({ app: "news", title, tabs: TABS, active, body, ...extra });
+      const L = (active, title, body, extra = {}) => App.layout({ app: "news", title, tabs: TABS, active, body, ...(extra.back ? {} : { right: Updater.button("news") }), ...extra });
       if (view === "day" && arg) return L("brief", U.dateLabel(arg), briefView(arg), { back: "#/news/history" });
       if (view === "history") return L("brief", "지난 뉴스", historyView(), { back: "#/news" });
-      if (view === "books") return L("books", "읽은 책", booksView(arg ? decodeURIComponent(arg) : null));
+      if (view === "books") return L("books", "읽은 책", booksView(arg ? decodeURIComponent(arg) : null), { right: null });
       if (view === "book" && arg) {
         const st = rest[2] ? decodeURIComponent(rest[2]) : null;
         return L("books", arg === "new" ? "책 추가" : "책", bookForm(arg, st), { back: `#/news/books${st ? `/${encodeURIComponent(st)}` : ""}`, noTabs: true });
@@ -211,7 +211,9 @@
       if (view === "flights") { location.replace("#/trip"); return null; } // moved to 알차게떠나기
       const TITLES = { life: "2030이 알아야 할 것", world: "국제 정세", store: "SPAO 매장 HR 체크" };
       if (GROUP_IDS.includes(view)) return L(view, TITLES[view], topicView(view));
-      return L("brief", "똑똑해지기", briefView(), { right: h("button.link-btn.small", { onclick: () => (location.hash = "#/news/history") }, "지난 뉴스") });
+      return L("brief", "똑똑해지기", briefView(), {
+        right: h("div.top-actions", h("button.link-btn.small", { onclick: () => (location.hash = "#/news/history") }, "지난 뉴스"), Updater.button("news")),
+      });
     },
   };
 })();

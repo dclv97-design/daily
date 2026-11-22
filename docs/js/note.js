@@ -953,7 +953,7 @@
       if (view === "pref") return L("pref", "선호", prefView(arg));
       if (view === "story" || view === "episode") return L("story", "스토리", storyView(arg));
       if (view === "vs") return L("vs", "VS", vsView());
-      return L("today", "똑부러지기", todayView(), { right: h("div.sub", U.dateLabel(U.today())) });
+      return L("today", "똑부러지기", todayView(), { right: Updater.button("note") });
     },
   };
 })();

@@ -173,7 +173,7 @@
       const [view, arg] = rest;
       const go = (active, title, fn, opts = {}) =>
         App.layout({
-          app: "stock", title, sub: opts.sub, back: opts.back || "#/", right: refreshBtn(), tabs: TABS, active,
+          app: "stock", title, sub: opts.sub, back: opts.back || "#/", right: Updater.button("stock"), tabs: TABS, active,
           body: (opts.date ? load(opts.date) : load()).then((d) => fn(d)).catch(problemView),
         });
       if (view === "highvol") return go("highvol", "고변동 발굴", highvolView, { sub: "+20% / -10% · 확정 촉매" });

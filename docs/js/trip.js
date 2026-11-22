@@ -16,15 +16,16 @@
   }
 
   function flightRow(r) {
-    const t = r.now || r.low;
+    const t = r.now || r.low || r.early;
     const isLow = r.now && r.low && r.now.price <= r.low.price;
-    return h(t.link ? "a.list-item.flight-row" : "div.list-item.flight-row", t.link ? { href: t.link, target: "_blank", rel: "noopener" } : {},
+    const meta = r.now
+      ? (isLow ? "오늘 확인 · 역대 최저" : `오늘 확인 · 최저 ${won(r.low.price)} (${U.dateLabel(r.low.seen)})`)
+      : r.low ? `오늘은 없음 · ${U.dateLabel(r.low.seen)} 최저 기록`
+        : `귀국편 ${hm(t.ret)} 출발 · 15시 조건 밖 (참고용)`;
+    return h(`${t.link ? "a" : "div"}.list-item.flight-row${r.early ? ".early" : ""}`, t.link ? { href: t.link, target: "_blank", rel: "noopener" } : {},
       h("div.flight-top", h("b", r.city), h("span.tiny.muted", r.country), h("span.grow"), h("b.flight-price", won(t.price))),
       h("div.d", tripLine(t)),
-      h("div.m",
-        r.now
-          ? h("span", isLow ? "오늘 확인 · 역대 최저" : `오늘 확인 · 최저 ${won(r.low.price)} (${U.dateLabel(r.low.seen)})`)
-          : h("span", `오늘은 없음 · ${U.dateLabel(r.low.seen)} 최저 기록`)));
+      h("div.m", h("span", meta)));
   }
 
   function noData() {
@@ -41,7 +42,9 @@
       const card = h("div.card.flight-card");
       card.appendChild(h("button.flight-head", { onclick: () => (location.hash = open ? "#/trip" : `#/trip/${hd.id}`) },
         h("b", hd.label), h("span.tiny.muted", range(hd.must)), h("span.grow"),
-        hd.rows.length ? h("b.flight-price", `${hd.rows[0].city} ${won((hd.rows[0].now || hd.rows[0].low).price)}~`) : h("span.small.muted", "아직 없음")));
+        !hd.rows.length ? h("span.small.muted", "아직 없음")
+          : hd.rows[0].early ? h("span.small.muted", "조건 밖만 있음")
+            : h("b.flight-price", `${hd.rows[0].city} ${won((hd.rows[0].now || hd.rows[0].low).price)}~`)));
       if (open) {
         if (!hd.rows.length) card.appendChild(h("p.small.muted", "최근 검색된 직항 가격이 아직 없습니다. 날짜가 가까워질수록 늘어납니다."));
         hd.rows.slice(0, 20).forEach((r) => card.appendChild(flightRow(r)));
@@ -68,7 +71,7 @@
     badge,
     route(rest) {
       const [id] = rest;
-      return App.layout({ app: "trip", title: "알차게떠나기", sub: "2027 연휴 항공권", body: listView(id), back: id ? "#/trip" : "#/" });
+      return App.layout({ app: "trip", title: "알차게떠나기", sub: "2027 연휴 항공권", body: listView(id), back: id ? "#/trip" : "#/", right: Updater.button("trip") });
     },
   };
 })();

@@ -75,7 +75,7 @@
     const el = h(
       "div.launch",
       pinSlot,
-      h("div.launch-head", h("h1", U.dateLabel(U.today()))),
+      h("div.launch-head", h("h1", U.dateLabel(U.today())), Updater.button("all", "전체 새로고침")),
       h("div.app-grid-card", h("div.app-grid",
         appIcon("stock", "chart", "부자되기", "#/stocks", stockBadge),
         appIcon("news", "globe", "똑똑해지기", "#/news", newsBadge),
@@ -100,6 +100,9 @@
     const pass = (await U.store.kvGet("passphrase")) || "";
     const vapid = await U.store.kvGet("vapid");
     const body = h("div");
+
+    // GitHub connection for the update buttons
+    body.append(h("div.section-title", "새로고침 연결 (GitHub)"), await Updater.settingsCard());
 
     // Passphrase
     const passInput = h("input.input", { type: "password", value: pass, placeholder: "GitHub Secret DATA_PASSPHRASE와 같은 값", autocomplete: "off" });
