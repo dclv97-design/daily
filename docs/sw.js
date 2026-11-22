@@ -1,5 +1,5 @@
 /* Offline shell + web push. Bump VERSION when app files change. */
-const VERSION = "v20";
+const VERSION = "v21";
 const SHELL = [
   "./", "index.html", "app.css", "manifest.webmanifest",
   "js/util.js", "js/crypto.js", "js/update.js", "js/stocks.js", "js/vs-list.js", "js/note.js", "js/news.js", "js/trip.js", "js/quotes.js", "js/main.js",
