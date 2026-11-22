@@ -1,8 +1,8 @@
 /* Offline shell + web push. Bump VERSION when app files change. */
-const VERSION = "v18";
+const VERSION = "v20";
 const SHELL = [
   "./", "index.html", "app.css", "manifest.webmanifest",
-  "js/util.js", "js/crypto.js", "js/stocks.js", "js/vs-list.js", "js/note.js", "js/news.js", "js/trip.js", "js/quotes.js", "js/main.js",
+  "js/util.js", "js/crypto.js", "js/update.js", "js/stocks.js", "js/vs-list.js", "js/note.js", "js/news.js", "js/trip.js", "js/quotes.js", "js/main.js",
   "icons/icon.svg", "icons/icon-192.png", "icons/apple-touch-icon.png",
 ];
 
