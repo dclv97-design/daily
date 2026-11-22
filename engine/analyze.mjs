@@ -223,10 +223,14 @@ function fmtPrice(v, market) {
   return market === "KR" ? `${Math.round(v).toLocaleString("ko-KR")}원` : `$${v.toFixed(2)}`;
 }
 
-// Stocks first, then the news digest; a stock failure must not block the news (and vice versa).
+// PART (from the app's update button): all | stocks | news | flights. Only that part runs, so a
+// news update never pays for the stock catalyst search. A failure in one part must not block the others.
+const PART = process.env.PART || "all";
+const want = (p) => PART === "all" || PART === p;
+console.log(`part: ${PART}`);
 let failed = false;
-try { await main(); } catch (e) { console.error(e); failed = true; }
+if (want("stocks")) { try { await main(); } catch (e) { console.error(e); failed = true; } }
 let flightLine = null;
-try { flightLine = await runFlights({ dataDir, today: kstDate() }); } catch (e) { console.error("flights:", e.message); }
-try { await runNews({ dataDir, today: kstDate(), extraLine: flightLine }); } catch (e) { console.error("news:", e); }
+if (want("flights")) { try { flightLine = await runFlights({ dataDir, today: kstDate() }); } catch (e) { console.error("flights:", e.message); } }
+if (want("news")) { try { await runNews({ dataDir, today: kstDate(), extraLine: flightLine }); } catch (e) { console.error("news:", e); } }
 if (failed) process.exit(1);
