@@ -28,15 +28,50 @@
       h("div.m", h("span", meta)));
   }
 
+  /* PC 실시간 검색 결과 (data/flights/live.json, Claude Code가 Google 항공편에서 직접 조회해 올림) */
+  async function loadLive() {
+    try {
+      const r = await fetch("data/flights/live.json", { cache: "no-store" });
+      return r.ok ? r.json() : null;
+    } catch { return null; }
+  }
+  const gLink = (code, dep, ret) => `https://www.google.com/travel/flights?q=${encodeURIComponent(`Flights from SEL to ${code} on ${dep} through ${ret} nonstop`)}&hl=ko&curr=KRW`;
+  function liveRow(r, p) {
+    return h("a.list-item.flight-row", { href: gLink(r.code, p.dep, p.ret), target: "_blank", rel: "noopener" },
+      h("div.flight-top", h("b", r.city), h("span.tiny.muted", r.country), h("span.grow"), h("b.flight-price", won(r.total))),
+      h("div.d", `가는 편 ${r.go.dep} ${r.go.airline} · ${won(r.go.price)}`),
+      h("div.d", `오는 편 ${r.back.dep} ${r.back.airline} · ${won(r.back.price)}`));
+  }
+  function liveSection(live, openId) {
+    const box = h("div.live-box",
+      h("div.section-title", h("span", "실시간 검색"), h("span.tiny.muted", `${U.dateLabel(live.date)} PC에서 조회`)),
+      h("p.small.muted", { style: { margin: "-4px 4px 10px" } }, `${live.rule} · 누르면 Google 항공편에서 다시 확인`));
+    for (const p of live.pairs) {
+      const key = `live-${p.id}`, open = openId === key;
+      const card = h("div.card.flight-card");
+      card.appendChild(h("button.flight-head", { onclick: () => (location.hash = open ? "#/trip" : `#/trip/${key}`) },
+        h("b", p.label), h("span.tiny.muted", `${md(p.dep)}~${md(p.ret)}`), h("span.grow"),
+        p.rows.length ? h("b.flight-price", `${p.rows[0].city} ${won(p.rows[0].total)}~`) : h("span.small.muted", "판매 전")));
+      if (!p.rows.length) card.appendChild(h("p.small.muted", p.note || "결과 없음"));
+      p.rows.slice(0, open ? 20 : 3).forEach((r) => card.appendChild(liveRow(r, p)));
+      if (!open && p.rows.length > 3) card.appendChild(h("button.link-btn.small", { onclick: () => (location.hash = `#/trip/${key}`) }, `${p.rows.length - 3}곳 더 보기`));
+      box.appendChild(card);
+    }
+    return box;
+  }
+
   function noData() {
     return h("div.empty", h("b", "아직 항공권 데이터가 없습니다"), "평일 아침 분석 때 함께 모읍니다.");
   }
 
   async function listView(openId) {
+    const live = await loadLive();
     let d;
-    try { d = await load(); } catch { return noData(); }
-    const el = h("div",
-      h("p.small.muted", { style: { margin: "0 4px 12px" } }, "서울 출발 · 직항 왕복 · 4~5일 · 귀국편 15시 이후 · 위탁수화물은 예약 전 직접 확인"));
+    try { d = await load(); } catch { return live ? h("div", liveSection(live, openId)) : noData(); }
+    const el = h("div");
+    if (live) el.appendChild(liveSection(live, openId));
+    el.appendChild(h("div.section-title", h("span", "자동 수집"), h("span.tiny.muted", "다른 사람들이 최근 검색한 가격")));
+    el.appendChild(h("p.small.muted", { style: { margin: "-4px 4px 12px" } }, "서울 출발 · 직항 왕복 · 4~5일 · 귀국편 15시 이후 · 위탁수화물은 예약 전 직접 확인"));
     for (const hd of d.holidays) {
       const open = openId === hd.id;
       const card = h("div.card.flight-card");
