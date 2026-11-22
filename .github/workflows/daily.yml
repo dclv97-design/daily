@@ -11,6 +11,12 @@ on:
         default: all
         type: choice
         options: [all, stocks, news, flights]
+      claude:
+        description: "Claude API 사용 (off = PC에서 Claude Code가 요약·재료 검색을 직접 채움, API 요금 없음)"
+        required: false
+        default: "on"
+        type: choice
+        options: ["on", "off"]
 
 permissions:
   contents: write
@@ -45,6 +51,7 @@ jobs:
           PUSH_SUBSCRIPTION: ${{ secrets.PUSH_SUBSCRIPTION }}
           TRAVELPAYOUTS_TOKEN: ${{ secrets.TRAVELPAYOUTS_TOKEN }}
           PART: ${{ inputs.part || 'all' }}
+          CLAUDE: ${{ inputs.claude || 'on' }}
         run: node analyze.mjs
 
       - name: Publish encrypted data
