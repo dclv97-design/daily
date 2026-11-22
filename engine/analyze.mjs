@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { fetchKR, fetchUS, fetchFx, fetchIV, pool } from "./lib/market.mjs";
 import { summarize, touchProb, firstTouch } from "./lib/stats.mjs";
-import { researchCatalysts } from "./lib/claude.mjs";
+import { researchCatalysts, apiOff } from "./lib/claude.mjs";
 import { encryptJson } from "./lib/crypto.mjs";
 import { sendPush } from "./lib/push.mjs";
 import { runNews } from "./lib/news.mjs";
@@ -119,7 +119,16 @@ async function main() {
     ...holdings.items.map((h) => ({ name: h.name, market: h.market, symbol: symOf(h) })),
     ...customPicks.map((p) => ({ name: p.name, market: p.market, symbol: p.symbol })),
   ];
-  const research = await researchCatalysts({ today, horizonEnd, tickers: eventTickers, includeUS: US_PICKS });
+  let research = await researchCatalysts({ today, horizonEnd, tickers: eventTickers, includeUS: US_PICKS });
+  // PC mode (CLAUDE=off): use the catalyst file Claude Code wrote on the PC, if it is at most 3 days old.
+  if (!research && apiOff()) {
+    const p = path.join(here, "config", "research.json");
+    if (existsSync(p)) {
+      const r = JSON.parse(readFileSync(p, "utf8"));
+      if (r.date && (Date.parse(today) - Date.parse(r.date)) / 86400e3 <= 3) { research = r; console.log(`research: PC file ${r.date}, ${r.candidates?.length || 0} candidates`); }
+      else console.log(`research: PC file too old (${r.date})`);
+    }
+  }
   if (!research) warnings.push("촉매 검색을 하지 못했습니다(API 키 미설정 또는 오류). 이벤트는 미확인으로 표시됩니다.");
   const events = research?.events || {};
   customPicks.forEach((p) => { p.event = events[p.symbol] || null; });
