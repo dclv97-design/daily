@@ -18,7 +18,11 @@ function extractJson(text) {
   return JSON.parse(raw);
 }
 
+// CLAUDE=off: run without the API (Claude Code on the PC fills in research and summaries instead).
+export const apiOff = () => process.env.CLAUDE === "off";
+
 export async function researchCatalysts({ today, horizonEnd, tickers, includeUS = false }) {
+  if (apiOff()) { console.log("claude: off (PC mode)"); return null; }
   if (!process.env.ANTHROPIC_API_KEY) {
     console.log("claude: skipped (ANTHROPIC_API_KEY not set)");
     return null;
@@ -131,6 +135,7 @@ async function newsCall(prompt, maxTokens, schema) {
 
 // Step 1: choose up to 5 stories per group from titles and lead text. Returns {life: [[ids]], world: [...], store: [...]}.
 export async function pickNewsStories({ today, groups }) {
+  if (apiOff()) { console.log("claude news: off (PC mode)"); return null; }
   if (!process.env.ANTHROPIC_API_KEY) {
     console.log("claude news: skipped (ANTHROPIC_API_KEY not set)");
     return null;
