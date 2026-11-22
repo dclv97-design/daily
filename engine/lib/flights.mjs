@@ -17,6 +17,7 @@ export const HOLIDAYS = [
   { id: "children", label: "어린이날", must: ["2027-05-05"] },
   { id: "buddha", label: "부처님오신날", must: ["2027-05-13"] },
   { id: "jeheon", label: "제헌절", must: ["2027-07-17", "2027-07-19"] },
+  { id: "gwangbok", label: "광복절", must: ["2027-08-15", "2027-08-16"] },
   { id: "chuseok", label: "추석 연휴", must: ["2027-09-14", "2027-09-15", "2027-09-16"] },
   { id: "gaecheon", label: "개천절", must: ["2027-10-03", "2027-10-04"] },
   { id: "hangeul", label: "한글날", must: ["2027-10-09", "2027-10-11"] },
@@ -57,35 +58,54 @@ function monthPairs() {
 const localDate = (s) => String(s).slice(0, 10);
 const localHour = (s) => Number(String(s).slice(11, 13));
 
+// Returns { h, early } when the fare is a direct 4-5 day round trip that includes a holiday date.
+// early = the return flight leaves before 15:00 (shown in the app as "조건 밖", never as a match).
 export function matchHoliday(t) {
   if (t.transfers !== 0 || t.return_transfers !== 0 || !t.departure_at || !t.return_at) return null;
-  if (localHour(t.return_at) < 15) return null;
   const dep = d2n(localDate(t.departure_at)), ret = d2n(localDate(t.return_at));
   const len = ret - dep;
   if (len < 3 || len > 4) return null;
-  return HOLIDAYS.find((h) => h.must.some((d) => d2n(d) >= dep && d2n(d) <= ret)) || null;
+  const h = HOLIDAYS.find((x) => x.must.some((d) => d2n(d) >= dep && d2n(d) <= ret));
+  return h ? { h, early: localHour(t.return_at) < 15 } : null;
 }
 
+async function getJson(token, url) {
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await fetch(url, { headers: { "X-Access-Token": token, "Accept-Encoding": "gzip, deflate" } });
+      if (r.status === 429) { await new Promise((res) => setTimeout(res, 2000 * (i + 1))); continue; }
+      if (r.status === 401 || r.status === 403) throw new Error(`token rejected (${r.status})`);
+      if (!r.ok) return null;
+      const j = await r.json();
+      return j.success ? j.data : null;
+    } catch (e) {
+      if (/token rejected/.test(e.message)) throw e;
+      await new Promise((res) => setTimeout(res, 800 * (i + 1)));
+    }
+  }
+  return null;
+}
+
+// Cheapest round trips for a departure month + return month.
 async function query(token, dest, depMonth, retMonth, market) {
   const qs = new URLSearchParams({
     origin: ORIGIN, destination: dest, departure_at: depMonth, return_at: retMonth,
     one_way: "false", direct: "true", currency: "krw", sorting: "price", limit: "1000", page: "1",
   });
   if (market) qs.set("market", market);
-  for (let i = 0; i < 3; i++) {
-    try {
-      const r = await fetch(`${API}?${qs}`, { headers: { "X-Access-Token": token, "Accept-Encoding": "gzip, deflate" } });
-      if (r.status === 429) { await new Promise((res) => setTimeout(res, 2000 * (i + 1))); continue; }
-      if (r.status === 401 || r.status === 403) throw new Error(`token rejected (${r.status})`);
-      if (!r.ok) return [];
-      const j = await r.json();
-      return j.success && Array.isArray(j.data) ? j.data : [];
-    } catch (e) {
-      if (/token rejected/.test(e.message)) throw e;
-      await new Promise((res) => setTimeout(res, 800 * (i + 1)));
-    }
-  }
-  return [];
+  const d = await getJson(token, `${API}?${qs}`);
+  return Array.isArray(d) ? d : [];
+}
+
+// Cheapest 3-4 night round trip for every departure date of a month (one per date).
+async function grouped(token, dest, depMonth, market) {
+  const qs = new URLSearchParams({
+    origin: ORIGIN, destination: dest, departure_at: depMonth, group_by: "departure_at",
+    direct: "true", min_trip_duration: "3", max_trip_duration: "4", currency: "krw",
+  });
+  if (market) qs.set("market", market);
+  const d = await getJson(token, `https://api.travelpayouts.com/aviasales/v3/grouped_prices?${qs}`);
+  return d && typeof d === "object" ? Object.values(d) : [];
 }
 
 const short = (t, dest) => ({
@@ -106,21 +126,30 @@ export async function runFlights({ dataDir, today }) {
   console.log(`flights: market ${market || "default"} (probe kr ${kr}, default ${def})`);
 
   const pairs = monthPairs();
-  const found = {}; // holidayId -> destCode -> best ticket today
+  const depMonths = [...new Set(pairs.map(([dm]) => dm))];
+  const found = {}; // holidayId -> destCode -> best matching ticket today
+  const near = {}; // holidayId -> destCode -> best ticket that fails only the 15:00 return rule
+  const byMonth = {}; // diagnostics: departure month -> { raw, match, near }
   let calls = 0, raw = 0;
-  for (const [code] of DESTS) {
-    for (const [dm, rm] of pairs) {
-      const rows = await query(token, code, dm, rm, market);
-      calls++; raw += rows.length;
-      for (const t of rows) {
-        const h = matchHoliday(t);
-        if (!h) continue;
-        const cur = (found[h.id] ||= {})[code];
-        if (!cur || t.price < cur.price) found[h.id][code] = short(t, code);
-      }
-      await new Promise((res) => setTimeout(res, 250));
+  const take = (code, rows) => {
+    raw += rows.length;
+    for (const t of rows) {
+      const m = String(t.departure_at || "").slice(0, 7);
+      const s = (byMonth[m] ||= { raw: 0, match: 0, near: 0 });
+      s.raw++;
+      const r = matchHoliday(t);
+      if (!r) continue;
+      const box = r.early ? near : found;
+      s[r.early ? "near" : "match"]++;
+      const cur = (box[r.h.id] ||= {})[code];
+      if (!cur || t.price < cur.price) box[r.h.id][code] = short(t, code);
     }
+  };
+  for (const [code] of DESTS) {
+    for (const [dm, rm] of pairs) { take(code, await query(token, code, dm, rm, market)); calls++; await new Promise((res) => setTimeout(res, 150)); }
+    for (const dm of depMonths) { take(code, await grouped(token, code, dm, market)); calls++; await new Promise((res) => setTimeout(res, 150)); }
   }
+  console.log(`flights: by month ${Object.keys(byMonth).sort().map((m) => `${m} ${byMonth[m].raw}/${byMonth[m].match}/${byMonth[m].near}`).join(", ")} (fares/match/early-return)`);
 
   // Lowest price ever seen per holiday + destination (the cache only covers 48 hours).
   const dir = path.join(dataDir, "flights");
@@ -144,9 +173,10 @@ export async function runFlights({ dataDir, today }) {
     const rows = DESTS.map(([code]) => {
       const now = found[h.id]?.[code] || null;
       const low = lows[`${h.id}|${code}`] || null;
-      if (!now && !low) return null;
-      return { code, city: name[code].n, country: name[code].country, now, low };
-    }).filter(Boolean).sort((a, b) => (a.now?.price ?? a.low.price) - (b.now?.price ?? b.low.price));
+      const early = !now && !low ? near[h.id]?.[code] || null : null; // only when nothing matches
+      if (!now && !low && !early) return null;
+      return { code, city: name[code].n, country: name[code].country, now, low, early };
+    }).filter(Boolean).sort((a, b) => (!!a.early - !!b.early) || ((a.now || a.low || a.early).price - (b.now || b.low || b.early).price));
     return { id: h.id, label: h.label, must: h.must, rows };
   });
   const out = { v: 1, date: today, generatedAt: new Date().toISOString(), market: market || "default", newLows: newLows.filter((x) => x.was).length, holidays };

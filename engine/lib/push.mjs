@@ -2,7 +2,12 @@
 import webpush from "web-push";
 
 export async function sendPush({ title, body, url = "./#/stocks" }) {
-  const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, PUSH_SUBSCRIPTION, VAPID_SUBJECT } = process.env;
+  const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, PUSH_SUBSCRIPTION, VAPID_SUBJECT, PART } = process.env;
+  // A menu's update button (PART = stocks/news/flights) shows the result in the app right away; no push needed.
+  if (PART && PART !== "all") {
+    console.log(`push: skipped (manual ${PART} update)`);
+    return false;
+  }
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY || !PUSH_SUBSCRIPTION) {
     console.log("push: skipped (VAPID keys or subscription not set)");
     return false;
